@@ -3305,8 +3305,8 @@ LOAD c:/st/stm32cubeide_1.11.0/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
  .bss.overshoot
                 0x00000000200001c0        0x4 ./Core/Src/main.o
                 0x00000000200001c0                overshoot
- .bss.error     0x00000000200001c4        0x4 ./Core/Src/main.o
-                0x00000000200001c4                error
+ .bss.sserror   0x00000000200001c4        0x4 ./Core/Src/main.o
+                0x00000000200001c4                sserror
  .bss.Velocity  0x00000000200001c8        0x4 ./Core/Src/main.o
                 0x00000000200001c8                Velocity
  *fill*         0x00000000200001cc        0x4 
@@ -3557,32 +3557,32 @@ LOAD c:/st/stm32cubeide_1.11.0/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
  .debug_line    0x0000000000009f37     0x2a50 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.o
  .debug_line    0x000000000000c987      0x283 ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Lib/GCC\libarm_cortexM4lf_math.a(arm_pid_init_f32.o)
 
-.debug_str      0x0000000000000000    0x8e5fd
- .debug_str     0x0000000000000000    0x8b739 ./Core/Src/main.o
-                                      0x8bb93 (size before relaxing)
- .debug_str     0x000000000008b739      0x4fd ./Core/Src/stm32f4xx_hal_msp.o
+.debug_str      0x0000000000000000    0x8e5ff
+ .debug_str     0x0000000000000000    0x8b73b ./Core/Src/main.o
+                                      0x8bb95 (size before relaxing)
+ .debug_str     0x000000000008b73b      0x4fd ./Core/Src/stm32f4xx_hal_msp.o
                                       0x8774d (size before relaxing)
- .debug_str     0x000000000008bc36       0xec ./Core/Src/stm32f4xx_it.o
+ .debug_str     0x000000000008bc38       0xec ./Core/Src/stm32f4xx_it.o
                                       0x86f99 (size before relaxing)
- .debug_str     0x000000000008bd22       0xdb ./Core/Src/system_stm32f4xx.o
+ .debug_str     0x000000000008bd24       0xdb ./Core/Src/system_stm32f4xx.o
                                       0x86a67 (size before relaxing)
- .debug_str     0x000000000008bdfd       0x36 ./Core/Startup/startup_stm32f411retx.o
+ .debug_str     0x000000000008bdff       0x36 ./Core/Startup/startup_stm32f411retx.o
                                          0x86 (size before relaxing)
- .debug_str     0x000000000008be33      0x5ee ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.o
+ .debug_str     0x000000000008be35      0x5ee ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.o
                                       0x87493 (size before relaxing)
- .debug_str     0x000000000008c421      0x323 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.o
+ .debug_str     0x000000000008c423      0x323 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.o
                                       0x871b4 (size before relaxing)
- .debug_str     0x000000000008c744      0x121 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.o
+ .debug_str     0x000000000008c746      0x121 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.o
                                       0x86be2 (size before relaxing)
- .debug_str     0x000000000008c865      0x228 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.o
+ .debug_str     0x000000000008c867      0x228 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.o
                                       0x86e9b (size before relaxing)
- .debug_str     0x000000000008ca8d      0xc3c ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.o
+ .debug_str     0x000000000008ca8f      0xc3c ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.o
                                       0x87dcf (size before relaxing)
- .debug_str     0x000000000008d6c9      0x3e1 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.o
+ .debug_str     0x000000000008d6cb      0x3e1 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.o
                                       0x875eb (size before relaxing)
- .debug_str     0x000000000008daaa      0x610 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.o
+ .debug_str     0x000000000008daac      0x610 ./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.o
                                       0x87428 (size before relaxing)
- .debug_str     0x000000000008e0ba      0x543 ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Lib/GCC\libarm_cortexM4lf_math.a(arm_pid_init_f32.o)
+ .debug_str     0x000000000008e0bc      0x543 ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Lib/GCC\libarm_cortexM4lf_math.a(arm_pid_init_f32.o)
                                         0x682 (size before relaxing)
 
 .comment        0x0000000000000000       0xc5

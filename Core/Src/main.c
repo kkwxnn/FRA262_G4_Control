@@ -76,7 +76,7 @@ float setposition = 0;
 float setdegree = 0;
 float maxposition = 0;
 float overshoot = 0;
-float error = 0;
+float sserror = 0;
 float Velocity = 0;
 /* USER CODE END PV */
 
@@ -174,7 +174,7 @@ int main(void)
 	  	  if (HAL_GetTick()>= timestamp2)
 	  	  {
 	  		  timestamp2 = HAL_GetTick()+10;
-	  		  error = setposition - position;
+	  		  sserror = setposition - position;
 	  		  duty = arm_pid_f32(&PID, setposition - position);
 	  		  if (duty >= 0)
 	  		  {
