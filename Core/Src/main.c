@@ -77,6 +77,7 @@ float setdegree = 0;
 float maxposition = 0;
 float overshoot = 0;
 float error = 0;
+float Velocity = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -139,6 +140,8 @@ int main(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, L_EN);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, R_EN);
 
+  HAL_TIM_Base_Start(&htim5); //Start Timer5
+
   PID.Kp = 1.5;
   PID.Ki = 0;
   PID.Kd = 1;
@@ -164,6 +167,7 @@ int main(void)
 	  {
 		  timestamp1 = currentTime + 100000;
 		  QEIEncoderPositionVelocity_Update();
+		  Velocity = QEIData.QEIVelocity;
 	  }
 
 	  static uint64_t timestamp2 = 0;
