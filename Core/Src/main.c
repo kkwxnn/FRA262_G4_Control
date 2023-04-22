@@ -46,8 +46,14 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+//Encoder
 uint32_t QEIReadRaw;
 
+//microsecond timer
+uint64_t _micros = 0;
+int64_t currentTime;
+
+//Motor drive
 typedef struct _QEIStructure
 {
 	uint32_t data[2]; //position data contenter
@@ -58,13 +64,19 @@ typedef struct _QEIStructure
 }QEIStructireTypedef;
 QEIStructireTypedef QEIData = {0};
 
-uint64_t _micros = 0;
-int64_t currentTime;
-
 float duty = 0;
 int direction = 0;
 int R_EN = 1;
 int L_EN = 1;
+
+//PID
+arm_pid_instance_f32 PID = {0};
+float position = 0;
+float setposition = 0;
+float setdegree = 0;
+float maxposition = 0;
+float overshoot = 0;
+float error = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -127,6 +139,11 @@ int main(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, L_EN);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, R_EN);
 
+  PID.Kp = 1.5;
+  PID.Ki = 0;
+  PID.Kd = 1;
+  arm_pid_init_f32(&PID, 0);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -136,7 +153,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  setposition = setdegree/4320.0*19200;
+
 	  QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim3);
+	  position = QEIReadRaw;
 
 	  static uint64_t timestamp1 = 0;
 	  currentTime = micros();
@@ -146,20 +166,27 @@ int main(void)
 		  QEIEncoderPositionVelocity_Update();
 	  }
 
-	  static uint32_t timestamp2 = 0;
+	  static uint64_t timestamp2 = 0;
 	  	  if (HAL_GetTick()>= timestamp2)
 	  	  {
 	  		  timestamp2 = HAL_GetTick()+10;
-	  		  if (direction == 0)
-	  		  {
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
-	  		  }
-	  		  else if (direction == 1)
+	  		  error = setposition - position;
+	  		  duty = arm_pid_f32(&PID, setposition - position);
+	  		  if (duty >= 0)
 	  		  {
 	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,duty);
 	  		  }
+	  		  else if (duty < 0)
+	  		  {
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,-1*duty);
+	  		  }
+	  		  if (position > maxposition)
+	  		  {
+	  			  maxposition = position;
+	  		  }
+	  		  overshoot = maxposition - position;
 	  	  }
   }
   /* USER CODE END 3 */
