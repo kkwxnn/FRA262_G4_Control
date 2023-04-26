@@ -46,8 +46,6 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-//Encoder
-uint32_t QEIReadRaw;
 
 //microsecond timer
 uint64_t _micros = 0;
@@ -72,12 +70,34 @@ int L_EN = 1;
 //PID
 arm_pid_instance_f32 PID = {0};
 float position = 0;
+float lastposition = 0;
 float setposition = 0;
 float setdegree = 0;
 float maxposition = 0;
 float overshoot = 0;
 float sserror = 0;
 float Velocity = 0;
+
+//Joystick
+typedef struct LocationStructure
+{
+	float L1[2];
+	float L2[2];
+	float L3[2];
+}Location;
+Location PickTray;
+Location PlaceTray;
+
+typedef struct ButtonStructure
+{
+	int last;
+	int current;
+	int flag;
+}Button;
+Button GetPositionButton;
+Button GetHomeButton;
+Button ResetButton;
+Button StopButton;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -90,7 +110,8 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 inline uint64_t micros();
 void QEIEncoderPositionVelocity_Update();
-
+void JoystickControl();
+void JoystickLocationState();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -142,9 +163,9 @@ int main(void)
 
   HAL_TIM_Base_Start(&htim5); //Start Timer5
 
-  PID.Kp = 1.5;
-  PID.Ki = 0;
-  PID.Kd = 1;
+  PID.Kp = 6;
+  PID.Ki = 0.0002;
+  PID.Kd = 0;
   arm_pid_init_f32(&PID, 0);
 
   /* USER CODE END 2 */
@@ -156,20 +177,52 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  setposition = setdegree/4320.0*19200;
+	  //Joystick
+	  GetPositionButton.current = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+	  if (GetPositionButton.last == 1 && GetPositionButton.current == 0)
+	  {
+		  GetPositionButton.flag = 1;
+	  }
+	  else
+	  {
+		  GetPositionButton.flag = 0;
+	  }
+	  GetPositionButton.last = GetPositionButton.current;
 
-	  QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim3);
-	  position = QEIReadRaw;
+
+	  ResetButton.current = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
+	  if (ResetButton.last == 1 && ResetButton.current == 0)
+	  {
+		ResetButton.flag = 1;
+	  }
+	  else
+	  {
+		  ResetButton.flag = 0;
+	  }
+	  ResetButton.last = ResetButton.current;
+
+	  static uint64_t timestamp0 = 0;
+	  if (HAL_GetTick()>= timestamp0)
+	  {
+		  timestamp0 = HAL_GetTick()+10;
+		  JoystickLocationState();
+		  JoystickControl();
+	  }
+
+	  //QEI
+	  setposition = setdegree/4320.0*19200;
+	  position = __HAL_TIM_GET_COUNTER(&htim3);
 
 	  static uint64_t timestamp1 = 0;
 	  currentTime = micros();
-	  if(currentTime > timestamp1) //10Hz
+	  if(currentTime > timestamp1) //20Hz
 	  {
-		  timestamp1 = currentTime + 100000;
+		  timestamp1 = currentTime + 200000;
 		  QEIEncoderPositionVelocity_Update();
 		  Velocity = QEIData.QEIVelocity;
 	  }
 
+	  //PWM & Motor drive
 	  static uint64_t timestamp2 = 0;
 	  	  if (HAL_GetTick()>= timestamp2)
 	  	  {
@@ -178,13 +231,13 @@ int main(void)
 	  		  duty = arm_pid_f32(&PID, setposition - position);
 	  		  if (duty >= 0)
 	  		  {
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,duty);
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
 	  		  }
 	  		  else if (duty < 0)
 	  		  {
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,-1*duty);
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
 	  		  }
 	  		  if (position > maxposition)
 	  		  {
@@ -465,12 +518,24 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PA0 PA1 PA4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB10 PB4 */
   GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_4;
@@ -490,10 +555,12 @@ void HAL_TIM_PeroidElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
+
 uint64_t micros()
 {
 	return __HAL_TIM_GET_COUNTER(&htim5)+_micros;
 }
+
 
 void QEIEncoderPositionVelocity_Update()
 {
@@ -513,6 +580,102 @@ void QEIEncoderPositionVelocity_Update()
 
 	QEIData.data[1] = QEIData.data[0];
 	QEIData.timestamp[1] = QEIData.timestamp[0];
+}
+
+
+void JoystickControl()
+{
+	if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == 0)
+	{
+		setdegree += 1;
+	}
+	else if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+	{
+		setdegree -= 1;
+	}
+}
+
+
+void JoystickLocationState()
+{
+	static int state = 0;
+	switch(state)
+	{
+	case 0:
+		PickTray.L1[1] = 0;
+		PickTray.L2[1] = 0;
+		PickTray.L3[1] = 0;
+		PlaceTray.L1[1] = 0;
+		PlaceTray.L2[1] = 0;
+		PlaceTray.L3[1] = 0;
+		break;
+	case 1:
+		if (GetPositionButton.flag == 1)
+		{
+			PickTray.L1[1] = position;
+			GetPositionButton.flag = 0;
+			state = 2;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	case 2:
+		if (GetPositionButton.flag == 1)
+		{
+			PickTray.L2[1] = position;
+			GetPositionButton.flag = 0;
+			state = 3;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	case 3:
+		if (GetPositionButton.flag == 1)
+		{
+			PickTray.L3[1] = position;
+			GetPositionButton.flag = 0;
+			state = 4;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	case 4:
+		if (GetPositionButton.flag == 1)
+		{
+			PlaceTray.L1[1] = position;
+			GetPositionButton.flag = 0;
+			state = 5;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	case 5:
+		if (GetPositionButton.flag == 1)
+		{
+			PlaceTray.L2[1] = position;
+			GetPositionButton.flag = 0;
+			state = 6;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	case 6:
+		if (GetPositionButton.flag == 1)
+		{
+			PlaceTray.L3[1] = position;
+			GetPositionButton.flag = 0;
+			state = 0;
+		}
+		else if (ResetButton.flag == 1)
+			ResetButton.flag = 0;
+			state = 0;
+		break;
+	}
 }
 /* USER CODE END 4 */
 
