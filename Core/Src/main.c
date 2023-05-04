@@ -39,6 +39,9 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
@@ -68,15 +71,23 @@ int R_EN = 1;
 int L_EN = 1;
 
 //PID
-arm_pid_instance_f32 PID = {0};
-float position = 0;
-float lastposition = 0;
+int16_t position ;
 float setposition = 0;
-float setdegree = 0;
-float maxposition = 0;
-float overshoot = 0;
-float sserror = 0;
-float Velocity = 0;
+float errorposition = 0;
+float u_position = 0;
+float pre_errorposition = 0;
+
+float integral = 0;
+float derivative = 0;
+
+float velocity = 0;
+float setvelocity = 0;
+float sumsetvelocity = 0;
+float errorvelocity = 0;
+
+float Kp = 0;
+float Ki = 0;
+float Kd = 0;
 
 //Joystick
 typedef struct LocationStructure
@@ -95,23 +106,29 @@ typedef struct ButtonStructure
 	int flag;
 }Button;
 Button GetPositionButton;
-Button GetHomeButton;
 Button ResetButton;
-Button StopButton;
+Button FineButton;
+Button RoughButton;
+
+int XYSwitch[2];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 inline uint64_t micros();
 void QEIEncoderPositionVelocity_Update();
 void JoystickControl();
+void JoystickPinUpdate();
 void JoystickLocationState();
+float PIDcal(float setposition, int16_t position);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -147,10 +164,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_TIM5_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
 
@@ -163,10 +182,7 @@ int main(void)
 
   HAL_TIM_Base_Start(&htim5); //Start Timer5
 
-  PID.Kp = 6;
-  PID.Ki = 0.0002;
-  PID.Kd = 0;
-  arm_pid_init_f32(&PID, 0);
+  HAL_ADC_Start_DMA(&hadc1, XYSwitch, 2);
 
   /* USER CODE END 2 */
 
@@ -178,48 +194,20 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  //Joystick
-	  GetPositionButton.current = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
-	  if (GetPositionButton.last == 1 && GetPositionButton.current == 0)
-	  {
-		  GetPositionButton.flag = 1;
-	  }
-	  else
-	  {
-		  GetPositionButton.flag = 0;
-	  }
-	  GetPositionButton.last = GetPositionButton.current;
-
-
-	  ResetButton.current = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
-	  if (ResetButton.last == 1 && ResetButton.current == 0)
-	  {
-		ResetButton.flag = 1;
-	  }
-	  else
-	  {
-		  ResetButton.flag = 0;
-	  }
-	  ResetButton.last = ResetButton.current;
-
-	  static uint64_t timestamp0 = 0;
-	  if (HAL_GetTick()>= timestamp0)
-	  {
-		  timestamp0 = HAL_GetTick()+10;
-		  JoystickLocationState();
-		  JoystickControl();
-	  }
+	  JoystickControl();
+	  JoystickPinUpdate();
+	  JoystickLocationState();
 
 	  //QEI
-	  setposition = setdegree/4320.0*19200;
 	  position = __HAL_TIM_GET_COUNTER(&htim3);
 
 	  static uint64_t timestamp1 = 0;
 	  currentTime = micros();
-	  if(currentTime > timestamp1) //20Hz
+	  if(currentTime > timestamp1)
 	  {
-		  timestamp1 = currentTime + 200000;
+		  timestamp1 = currentTime + 1000;
 		  QEIEncoderPositionVelocity_Update();
-		  Velocity = QEIData.QEIVelocity;
+		  velocity = QEIData.QEIVelocity;
 	  }
 
 	  //PWM & Motor drive
@@ -227,8 +215,7 @@ int main(void)
 	  	  if (HAL_GetTick()>= timestamp2)
 	  	  {
 	  		  timestamp2 = HAL_GetTick()+10;
-	  		  sserror = setposition - position;
-	  		  duty = arm_pid_f32(&PID, setposition - position);
+	  		  duty = PIDcal(setposition, position);
 	  		  if (duty >= 0)
 	  		  {
 	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
@@ -239,11 +226,6 @@ int main(void)
 	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
 	  		  }
-	  		  if (position > maxposition)
-	  		  {
-	  			  maxposition = position;
-	  		  }
-	  		  overshoot = maxposition - position;
 	  	  }
   }
   /* USER CODE END 3 */
@@ -293,6 +275,67 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 2;
+  hadc1.Init.DMAContinuousRequests = ENABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = 2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -385,10 +428,10 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = QEI_PERIOD - 1;
+  htim3.Init.Period = QEI_PERIOD-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -492,6 +535,22 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -507,9 +566,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
@@ -518,21 +574,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA1 PA4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_4;
+  /*Configure GPIO pins : PA4 PA5 PA10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  /*Configure GPIO pins : PB0 PB5 PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_5|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -582,19 +631,109 @@ void QEIEncoderPositionVelocity_Update()
 	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
+float PIDcal(float setposition, int16_t position)
+{
+	errorposition = setposition - position;
+
+	integral = integral + errorposition;
+	derivative = errorposition - pre_errorposition;
+	u_position = Kp*errorposition + Ki*integral + Kd*derivative;
+
+	pre_errorposition = errorposition;
+
+	return u_position;
+}
+
+void JoystickPinUpdate()
+{
+	  GetPositionButton.current = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);
+	  if (GetPositionButton.last == 1 && GetPositionButton.current == 0)
+	  {
+		  GetPositionButton.flag = 1;
+	  }
+	  else
+	  {
+		  GetPositionButton.flag = 0;
+	  }
+	  GetPositionButton.last = GetPositionButton.current;
+
+	  ResetButton.current = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5);
+	  if (ResetButton.last == 1 && ResetButton.current == 0)
+	  {
+		ResetButton.flag = 1;
+	  }
+	  else
+	  {
+		  ResetButton.flag = 0;
+	  }
+	  ResetButton.last = ResetButton.current;
+
+	  FineButton.current = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10);
+	  if (FineButton.last == 1 && FineButton.current == 0)
+	  {
+		  FineButton.flag = 1;
+	  }
+	  else
+	  {
+		  FineButton.flag = 0;
+	  }
+	  FineButton.last = FineButton.current;
+
+	  RoughButton.current = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5);
+	  if (RoughButton.last == 1 && RoughButton.current == 0)
+	  {
+		  RoughButton.flag = 1;
+	  }
+	  else
+	  {
+		  RoughButton.flag = 0;
+	  }
+	  RoughButton.last = RoughButton.current;
+}
 
 void JoystickControl()
 {
-	if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == 0)
+	static float setposition_f = 0;
+	static int JoySpeed = 0;
+
+	if(RoughButton.flag == 1)
 	{
-		setdegree += 1;
+		JoySpeed = 0;
+		RoughButton.flag = 0;
 	}
-	else if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+	else if(FineButton.flag == 1)
 	{
-		setdegree -= 1;
+		JoySpeed = 1;
+		FineButton.flag = 0;
+	}
+
+	switch(JoySpeed)
+	{
+	case 0:
+		if(XYSwitch[1] > 2150)
+		{
+			setposition_f += XYSwitch[1]*0.00002;
+		}
+		else if(XYSwitch[1] < 2000)
+		{
+			setposition_f -= (4096-XYSwitch[1])*0.00002;
+		}
+		setposition = (int)round(setposition_f);
+		break;
+
+	case 1:
+		if(XYSwitch[1] > 2150)
+		{
+			setposition_f += XYSwitch[1]*0.0000005;
+		}
+		else if(XYSwitch[1] < 2000)
+		{
+			setposition_f -= (4096-XYSwitch[1])*0.0000005;
+		}
+		setposition = (int)round(setposition_f);
+		break;
 	}
 }
-
 
 void JoystickLocationState()
 {
@@ -608,72 +747,84 @@ void JoystickLocationState()
 		PlaceTray.L1[1] = 0;
 		PlaceTray.L2[1] = 0;
 		PlaceTray.L3[1] = 0;
-		break;
-	case 1:
 		if (GetPositionButton.flag == 1)
 		{
 			PickTray.L1[1] = position;
 			GetPositionButton.flag = 0;
-			state = 2;
+			state = 1;
 		}
-		else if (ResetButton.flag == 1)
-			ResetButton.flag = 0;
-			state = 0;
 		break;
-	case 2:
+	case 1:
 		if (GetPositionButton.flag == 1)
 		{
 			PickTray.L2[1] = position;
 			GetPositionButton.flag = 0;
-			state = 3;
+			state = 2;
 		}
 		else if (ResetButton.flag == 1)
+		{
 			ResetButton.flag = 0;
 			state = 0;
+		}
 		break;
-	case 3:
+	case 2:
 		if (GetPositionButton.flag == 1)
 		{
 			PickTray.L3[1] = position;
 			GetPositionButton.flag = 0;
-			state = 4;
+			state = 3;
 		}
 		else if (ResetButton.flag == 1)
+		{
 			ResetButton.flag = 0;
 			state = 0;
+		}
 		break;
-	case 4:
+	case 3:
 		if (GetPositionButton.flag == 1)
 		{
 			PlaceTray.L1[1] = position;
 			GetPositionButton.flag = 0;
-			state = 5;
+			state = 4;
 		}
 		else if (ResetButton.flag == 1)
+		{
 			ResetButton.flag = 0;
 			state = 0;
+		}
 		break;
-	case 5:
+	case 4:
 		if (GetPositionButton.flag == 1)
 		{
 			PlaceTray.L2[1] = position;
 			GetPositionButton.flag = 0;
-			state = 6;
+			state = 5;
 		}
 		else if (ResetButton.flag == 1)
+		{
 			ResetButton.flag = 0;
 			state = 0;
+		}
 		break;
-	case 6:
+	case 5:
 		if (GetPositionButton.flag == 1)
 		{
 			PlaceTray.L3[1] = position;
 			GetPositionButton.flag = 0;
-			state = 0;
+			state = 6;
 		}
 		else if (ResetButton.flag == 1)
+		{
 			ResetButton.flag = 0;
 			state = 0;
+		}
+		break;
+	case 6:
+		if (ResetButton.flag == 1)
+		{
+			ResetButton.flag = 0;
+			state = 0;
+		}
 		break;
 	}
 }
