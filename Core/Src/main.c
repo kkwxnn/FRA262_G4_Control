@@ -49,6 +49,8 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+//scheduler
+int scheduler = 0;
 
 //microsecond timer
 uint64_t _micros = 0;
@@ -70,34 +72,65 @@ int direction = 0;
 int R_EN = 1;
 int L_EN = 1;
 
+//Trajectory
+int Trajectstate = 0;
+
+float qf;
+float qi;
+float qdi;
+float qd_max = 500;
+float qdd_max = 400;
+float initime = 0;
+
+float t_half = 0;
+
 //PID
 int16_t position ;
-float setposition = 0;
-float errorposition = 0;
-float u_position = 0;
-float pre_errorposition = 0;
+int16_t setposition = 0;
+int16_t errorposition = 0;
+int16_t u_position = 0;
+int16_t pre_errorposition = 0;
+int16_t pre_errorvelocity = 0;
 
-float integral = 0;
-float derivative = 0;
+int16_t integral_p = 0;
+int16_t derivative_p = 0;
+int16_t integral_v = 0;
+int16_t derivative_v = 0;
 
-float velocity = 0;
-float setvelocity = 0;
-float sumsetvelocity = 0;
-float errorvelocity = 0;
+int16_t velocity = 0;
+int16_t setvelocity = 0;
+int16_t sumsetvelocity = 0;
+int16_t errorvelocity = 0;
 
-float Kp = 0;
-float Ki = 0;
-float Kd = 0;
+int16_t setacc = 0;
+
+float Kp_p = 0;
+float Ki_p = 0;
+float Kd_p = 0;
+float Kp_v = 0;
+float Ki_v = 0;
+float Kd_v = 0;
 
 //Joystick
 typedef struct LocationStructure
 {
 	float L1[2];
 	float L2[2];
-	float L3[2];
+	float hole_1[2];
+	float hole_2[2];
+	float hole_3[2];
+	float hole_4[2];
+	float hole_5[2];
+	float hole_6[2];
+	float hole_7[2];
+	float hole_8[2];
+	float hole_9[2];
 }Location;
 Location PickTray;
 Location PlaceTray;
+
+float cos_Theta = 0;
+float sin_Theta = 0;
 
 typedef struct ButtonStructure
 {
@@ -111,6 +144,7 @@ Button FineButton;
 Button RoughButton;
 
 int XYSwitch[2];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -128,7 +162,9 @@ void QEIEncoderPositionVelocity_Update();
 void JoystickControl();
 void JoystickPinUpdate();
 void JoystickLocationState();
-float PIDcal(float setposition, int16_t position);
+float PIDcal(int16_t setposition, int16_t position, int16_t setvelocity);
+void TrajectoryGenerator();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -193,40 +229,52 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  //Joystick
-	  JoystickControl();
-	  JoystickPinUpdate();
-	  JoystickLocationState();
-
-	  //QEI
-	  position = __HAL_TIM_GET_COUNTER(&htim3);
-
-	  static uint64_t timestamp1 = 0;
-	  currentTime = micros();
-	  if(currentTime > timestamp1)
+	  switch(scheduler)
 	  {
-		  timestamp1 = currentTime + 1000;
-		  QEIEncoderPositionVelocity_Update();
-		  velocity = QEIData.QEIVelocity;
+	  //Joystick
+	  case 0:
+		  //QEI
+		  position = __HAL_TIM_GET_COUNTER(&htim3);
+		  JoystickControl(); //Read Pin form Joystick
+		  JoystickPinUpdate(); //Check Pin Flag
+		  JoystickLocationState();
+		  break;
+	  //Trajectory
+	  case 1:
+		  //QEI
+		  position = __HAL_TIM_GET_COUNTER(&htim3);
+		  static uint64_t timestamp1 = 0;
+		  currentTime = micros();
+		  if(currentTime > timestamp1)
+		  {
+			  timestamp1 = currentTime + 1000;
+			  QEIEncoderPositionVelocity_Update();
+			  velocity = QEIData.QEIVelocity;
+		  }
+
+		  //Trajectory
+		  TrajectoryGenerator();
+
+		  //PWM & Motor drive & PID
+		  static uint64_t timestamp2 = 0;
+			  if (micros()>= timestamp2)
+			  {
+				  timestamp2 = micros()+10;
+				  duty = PIDcal(setposition, position, setvelocity);
+				  if (duty >= 0)
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+				  }
+				  else if (duty < 0)
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
+				  }
+			  }
+			  break;
 	  }
 
-	  //PWM & Motor drive
-	  static uint64_t timestamp2 = 0;
-	  	  if (HAL_GetTick()>= timestamp2)
-	  	  {
-	  		  timestamp2 = HAL_GetTick()+10;
-	  		  duty = PIDcal(setposition, position);
-	  		  if (duty >= 0)
-	  		  {
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
-	  		  }
-	  		  else if (duty < 0)
-	  		  {
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-	  			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
-	  		  }
-	  	  }
   }
   /* USER CODE END 3 */
 }
@@ -360,7 +408,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 83;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
+  htim1.Init.Period = 9999;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -631,17 +679,28 @@ void QEIEncoderPositionVelocity_Update()
 	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
-float PIDcal(float setposition, int16_t position)
+float PIDcal(int16_t setposition, int16_t position, int16_t setvelocity)
 {
+	//position control
 	errorposition = setposition - position;
 
-	integral = integral + errorposition;
-	derivative = errorposition - pre_errorposition;
-	u_position = Kp*errorposition + Ki*integral + Kd*derivative;
+	integral_p = integral_p + errorposition;
+	derivative_p = errorposition - pre_errorposition;
+	u_position = Kp_p*errorposition + Ki_p*integral_p + Kd_p*derivative_p;
 
 	pre_errorposition = errorposition;
 
-	return u_position;
+	//velocity control
+	sumsetvelocity = u_position + setvelocity;
+	errorvelocity = sumsetvelocity - QEIData.QEIVelocity;
+
+	integral_v = integral_v + errorvelocity;
+	derivative_v = errorvelocity - pre_errorvelocity;
+	duty = Kp_v*errorvelocity + Ki_v*integral_v + Kd_v*derivative_v;
+
+	pre_errorvelocity = errorvelocity;
+
+	return duty;
 }
 
 void JoystickPinUpdate()
@@ -693,7 +752,6 @@ void JoystickPinUpdate()
 
 void JoystickControl()
 {
-	static float setposition_f = 0;
 	static int JoySpeed = 0;
 
 	if(RoughButton.flag == 1)
@@ -709,28 +767,42 @@ void JoystickControl()
 
 	switch(JoySpeed)
 	{
+	//Rough
 	case 0:
 		if(XYSwitch[1] > 2150)
 		{
-			setposition_f += XYSwitch[1]*0.00002;
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,1000);
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			setposition_f -= (4096-XYSwitch[1])*0.00002;
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,1000);
 		}
-		setposition = (int)round(setposition_f);
+		else
+		{
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		}
 		break;
 
+	//Fine
 	case 1:
 		if(XYSwitch[1] > 2150)
 		{
-			setposition_f += XYSwitch[1]*0.0000005;
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,250);
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			setposition_f -= (4096-XYSwitch[1])*0.0000005;
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,250);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
-		setposition = (int)round(setposition_f);
+		else
+		{
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		}
 		break;
 	}
 }
@@ -743,10 +815,8 @@ void JoystickLocationState()
 	case 0:
 		PickTray.L1[1] = 0;
 		PickTray.L2[1] = 0;
-		PickTray.L3[1] = 0;
 		PlaceTray.L1[1] = 0;
 		PlaceTray.L2[1] = 0;
-		PlaceTray.L3[1] = 0;
 		if (GetPositionButton.flag == 1)
 		{
 			PickTray.L1[1] = position;
@@ -759,6 +829,35 @@ void JoystickLocationState()
 		{
 			PickTray.L2[1] = position;
 			GetPositionButton.flag = 0;
+			cos_Theta = PickTray.L2[0]/(sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1]))));
+			sin_Theta = PickTray.L2[1]/(sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1]))));
+
+			PickTray.hole_1[0] = (cos_Theta*10)+(-sin_Theta*-10);
+			PickTray.hole_1[1] = (sin_Theta*10)+(cos_Theta*-10);
+
+			PickTray.hole_2[0] = (cos_Theta*30)+(-sin_Theta*-10);
+			PickTray.hole_2[1] = (sin_Theta*30)+(cos_Theta*-10);
+
+			PickTray.hole_3[0] = (cos_Theta*50)+(-sin_Theta*-10);
+			PickTray.hole_3[1] = (sin_Theta*50)+(cos_Theta*-10);
+
+			PickTray.hole_4[0] = (cos_Theta*10)+(-sin_Theta*-25);
+			PickTray.hole_4[1] = (sin_Theta*10)+(cos_Theta*-25);
+
+			PickTray.hole_5[0] = (cos_Theta*30)+(-sin_Theta*-25);
+			PickTray.hole_5[1] = (sin_Theta*30)+(cos_Theta*-25);
+
+			PickTray.hole_6[0] = (cos_Theta*50)+(-sin_Theta*-25);
+			PickTray.hole_6[1] = (sin_Theta*50)+(cos_Theta*-25);
+
+			PickTray.hole_7[0] = (cos_Theta*10)+(-sin_Theta*-40);
+			PickTray.hole_7[1] = (sin_Theta*10)+(cos_Theta*-40);
+
+			PickTray.hole_8[0] = (cos_Theta*30)+(-sin_Theta*-40);
+			PickTray.hole_8[1] = (sin_Theta*30)+(cos_Theta*-40);
+
+			PickTray.hole_9[0] = (cos_Theta*50)+(-sin_Theta*-40);
+			PickTray.hole_9[1] = (sin_Theta*50)+(cos_Theta*-40);
 			state = 2;
 		}
 		else if (ResetButton.flag == 1)
@@ -770,7 +869,7 @@ void JoystickLocationState()
 	case 2:
 		if (GetPositionButton.flag == 1)
 		{
-			PickTray.L3[1] = position;
+			PlaceTray.L1[1] = position;
 			GetPositionButton.flag = 0;
 			state = 3;
 		}
@@ -783,8 +882,37 @@ void JoystickLocationState()
 	case 3:
 		if (GetPositionButton.flag == 1)
 		{
-			PlaceTray.L1[1] = position;
+			PlaceTray.L2[1] = position;
 			GetPositionButton.flag = 0;
+			cos_Theta = PlaceTray.L2[0]/(sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1]))));
+			sin_Theta = PlaceTray.L2[1]/(sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1]))));
+
+			PlaceTray.hole_1[0] = (cos_Theta*10)+(-sin_Theta*-10);
+			PlaceTray.hole_1[1] = (sin_Theta*10)+(cos_Theta*-10);
+
+			PlaceTray.hole_2[0] = (cos_Theta*30)+(-sin_Theta*-10);
+			PlaceTray.hole_2[1] = (sin_Theta*30)+(cos_Theta*-10);
+
+			PlaceTray.hole_3[0] = (cos_Theta*50)+(-sin_Theta*-10);
+			PlaceTray.hole_3[1] = (sin_Theta*50)+(cos_Theta*-10);
+
+			PlaceTray.hole_4[0] = (cos_Theta*10)+(-sin_Theta*-25);
+			PlaceTray.hole_4[1] = (sin_Theta*10)+(cos_Theta*-25);
+
+			PlaceTray.hole_5[0] = (cos_Theta*30)+(-sin_Theta*-25);
+			PlaceTray.hole_5[1] = (sin_Theta*30)+(cos_Theta*-25);
+
+			PlaceTray.hole_6[0] = (cos_Theta*50)+(-sin_Theta*-25);
+			PlaceTray.hole_6[1] = (sin_Theta*50)+(cos_Theta*-25);
+
+			PlaceTray.hole_7[0] = (cos_Theta*10)+(-sin_Theta*-40);
+			PlaceTray.hole_7[1] = (sin_Theta*10)+(cos_Theta*-40);
+
+			PlaceTray.hole_8[0] = (cos_Theta*30)+(-sin_Theta*-40);
+			PlaceTray.hole_8[1] = (sin_Theta*30)+(cos_Theta*-40);
+
+			PlaceTray.hole_9[0] = (cos_Theta*50)+(-sin_Theta*-40);
+			PlaceTray.hole_9[1] = (sin_Theta*50)+(cos_Theta*-40);
 			state = 4;
 		}
 		else if (ResetButton.flag == 1)
@@ -794,38 +922,115 @@ void JoystickLocationState()
 		}
 		break;
 	case 4:
-		if (GetPositionButton.flag == 1)
-		{
-			PlaceTray.L2[1] = position;
-			GetPositionButton.flag = 0;
-			state = 5;
-		}
-		else if (ResetButton.flag == 1)
-		{
-			ResetButton.flag = 0;
-			state = 0;
-		}
-		break;
-	case 5:
-		if (GetPositionButton.flag == 1)
-		{
-			PlaceTray.L3[1] = position;
-			GetPositionButton.flag = 0;
-			state = 6;
-		}
-		else if (ResetButton.flag == 1)
-		{
-			ResetButton.flag = 0;
-			state = 0;
-		}
-		break;
-	case 6:
+		scheduler = 1;
 		if (ResetButton.flag == 1)
 		{
 			ResetButton.flag = 0;
 			state = 0;
 		}
 		break;
+	}
+}
+
+void TrajectoryGenerator()
+{
+	switch(Trajectstate)
+	{
+	case 0: //initial Condition & Case Check
+		qi = position;
+		qf = 8000; //nonny
+		qdi = 0;
+		qd_max = 0.011; //pulse/us
+		qdd_max = 0.008; //pulse/us2
+
+	  float qdi_1 = 0;
+	  float qdi_2 = 0;
+	  float qi_1 = 0;
+	  float qi_2 = 0;
+
+	  if(qf > qi)
+	  {
+		  t_half = sqrt((qf-qi)/qdd_max);
+	  }
+	  else if(qf < qi)
+	  {
+		  t_half = sqrt(-1*(qf-qi)/qdd_max);
+	  }
+
+	  if(qf-qi < 0)
+	  {
+		  qd_max = -1*qd_max;
+		  qdd_max = -1*qdd_max;
+	  }
+
+	  float tacc = (qd_max-qdi)/qdd_max;
+	  float qacc = qdi*tacc + 0.5*qdd_max*tacc*tacc;
+	  float qdec = qacc;
+	  float tconst = ((qf-qi)-qacc-qdec)/qd_max;
+	  float tdec = tacc;
+
+	  if(qdi+qdd_max*t_half >= qd_max)
+	  {
+		  initime = micros();
+		  Trajectstate = 2;
+	  }
+	  else
+	  {
+		  initime = micros();
+		  Trajectstate = 1;
+	  }
+	  break;
+
+	case 1:
+	  if(micros() <= t_half + initime){
+	   setacc = qdd_max;
+	   setvelocity = qdi + setacc*(micros()-initime);
+	   setposition = qi + qdi*(micros()-initime)+0.5*setacc*(micros()-initime)*(micros()-initime);
+
+	   qi_1 = setposition;
+	   qdi_1 = setvelocity;
+	  }
+	  else if(t_half + initime < micros() && micros() <= (2*t_half) + initime)
+	  {
+		  setacc = -qdd_max;
+		  setvelocity = qdi_1 + setacc*(micros()-initime-t_half);
+		  setposition = qi_1 + qdi_1*(micros()-initime-t_half)+0.5*setacc*(micros()-initime)*(micros()-initime);
+	  }
+	  else if(micros()>(2*t_half) + initime)
+	  {
+		  Trajectstate = 3;
+	  }
+	break;
+
+	case 2:
+	 if(micros() <= tacc + initime)
+	 {
+		 setacc = qdd_max;
+		 setvelocity = qdi + setacc*(micros()-initime);
+		 setposition = qi + qdi*(micros()-initime)+0.5*setacc*(micros()-initime)*(micros()-initime);
+
+		 qi_1 = setposition;
+		 qdi_1 = setvelocity;
+	 }
+	 else if(tacc+initime < micros() && micros() <= initime+tacc+tconst)
+	 {
+		 setacc = 0;
+		 setvelocity = qd_max;
+		 setposition = qi_1 + qd_max*(micros()-initime-tacc);
+
+		 qi_2 = setposition;
+		 qdi_2 = setvelocity;
+	 }
+	 else if(tacc+tconst+initime < micros() && micros() <= tacc+tconst+tdec+initime)
+	 {
+		 setacc = -qdd_max;
+		 setvelocity = qdi_2 + setacc*(micros()-initime-tacc-tconst);
+		 setposition = qi_2 + qdi_2*(micros()-initime-tacc-tconst)+0.5*setacc*(micros()-initime-tacc-tconst)*(micros()-initime-tacc-tconst);
+	 }
+	 else if(micros() > initime+tacc+tconst+tdec){
+		 Trajectstate = 3;
+	 }
+	 break;
 	}
 }
 /* USER CODE END 4 */
