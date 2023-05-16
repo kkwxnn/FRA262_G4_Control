@@ -46,6 +46,7 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -74,6 +75,7 @@ int L_EN = 1;
 
 //Trajectory
 int Trajectstate = 0;
+float time = 0;
 
 float qf;
 float qi;
@@ -84,30 +86,41 @@ float initime = 0;
 
 float t_half = 0;
 
+float qdi_1 = 0;
+float qdi_2 = 0;
+float qi_1 = 0;
+float qi_2 = 0;
+
+float tacc ;
+float qacc ;
+float qdec ;
+float tconst ;
+float tdec ;
+
 //PID
 int16_t position ;
-int16_t setposition = 0;
-int16_t errorposition = 0;
-int16_t u_position = 0;
-int16_t pre_errorposition = 0;
-int16_t pre_errorvelocity = 0;
+float setposition = 0;
+float errorposition = 0;
+float u_position = 0;
+float pre_errorposition = 0;
+float pre_errorvelocity = 0;
 
-int16_t integral_p = 0;
-int16_t derivative_p = 0;
-int16_t integral_v = 0;
-int16_t derivative_v = 0;
+float integral_p = 0;
+float derivative_p = 0;
+float integral_v = 0;
+float derivative_v = 0;
 
-int16_t velocity = 0;
-int16_t setvelocity = 0;
-int16_t sumsetvelocity = 0;
-int16_t errorvelocity = 0;
+float velocity = 0;
+float setvelocity = 0;
+float sumsetvelocity = 0;
+float errorvelocity = 0;
 
-int16_t setacc = 0;
+float setacc = 0;
 
-float Kp_p = 0;
+float Kp_p = 1;
 float Ki_p = 0;
 float Kd_p = 0;
-float Kp_v = 0;
+float Kp_v = 1;
 float Ki_v = 0;
 float Kd_v = 0;
 
@@ -156,13 +169,14 @@ static void MX_TIM5_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 inline uint64_t micros();
 void QEIEncoderPositionVelocity_Update();
 void JoystickControl();
 void JoystickPinUpdate();
 void JoystickLocationState();
-float PIDcal(int16_t setposition, int16_t position, int16_t setvelocity);
+float PIDcal();
 void TrajectoryGenerator();
 
 /* USER CODE END PFP */
@@ -206,6 +220,7 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM1_Init();
   MX_ADC1_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
 
@@ -229,6 +244,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//	  static uint32_t timestamp1 = 0;
+//	  if(HAL_GetTick() > timestamp1)
+//	  {
+//		  timestamp1 = HAL_GetTick() + 1;
+//		  TrajectoryGenerator();
+//	  }
+
 	  switch(scheduler)
 	  {
 	  //Joystick
@@ -243,24 +265,28 @@ int main(void)
 	  case 1:
 		  //QEI
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
-		  static uint64_t timestamp1 = 0;
+		  static uint64_t timestamp0 = 0;
 		  currentTime = micros();
-		  if(currentTime > timestamp1)
+		  if(currentTime > timestamp0)
 		  {
-			  timestamp1 = currentTime + 1000;
+			  timestamp0 = currentTime + 1000;
 			  QEIEncoderPositionVelocity_Update();
 			  velocity = QEIData.QEIVelocity;
 		  }
 
-		  //Trajectory
-		  TrajectoryGenerator();
+		  static uint32_t timestamp1 = 0;
+		  if(HAL_GetTick() > timestamp1)
+		  {
+			  timestamp1 = HAL_GetTick() + 0.5;
+			  TrajectoryGenerator();
+		  }
 
 		  //PWM & Motor drive & PID
 		  static uint64_t timestamp2 = 0;
 			  if (micros()>= timestamp2)
 			  {
-				  timestamp2 = micros()+10;
-				  duty = PIDcal(setposition, position, setvelocity);
+				  timestamp2 = micros() + 10;
+				  duty = PIDcal();
 				  if (duty >= 0)
 				  {
 					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
@@ -274,7 +300,7 @@ int main(void)
 			  }
 			  break;
 	  }
-
+//
   }
   /* USER CODE END 3 */
 }
@@ -550,6 +576,39 @@ static void MX_TIM5_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -679,7 +738,7 @@ void QEIEncoderPositionVelocity_Update()
 	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
-float PIDcal(int16_t setposition, int16_t position, int16_t setvelocity)
+float PIDcal()
 {
 	//position control
 	errorposition = setposition - position;
@@ -776,8 +835,8 @@ void JoystickControl()
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,1000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,1000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
 		{
@@ -938,15 +997,10 @@ void TrajectoryGenerator()
 	{
 	case 0: //initial Condition & Case Check
 		qi = position;
-		qf = 8000; //nonny
+		qf = 10000; //nonny
 		qdi = 0;
-		qd_max = 0.011; //pulse/us
-		qdd_max = 0.008; //pulse/us2
-
-	  float qdi_1 = 0;
-	  float qdi_2 = 0;
-	  float qi_1 = 0;
-	  float qi_2 = 0;
+		qd_max = 11111.11; //pulse/s
+		qdd_max = 8888.88; //pulse/s
 
 	  if(qf > qi)
 	  {
@@ -963,73 +1017,79 @@ void TrajectoryGenerator()
 		  qdd_max = -1*qdd_max;
 	  }
 
-	  float tacc = (qd_max-qdi)/qdd_max;
-	  float qacc = qdi*tacc + 0.5*qdd_max*tacc*tacc;
-	  float qdec = qacc;
-	  float tconst = ((qf-qi)-qacc-qdec)/qd_max;
-	  float tdec = tacc;
+	  tacc = (qd_max-qdi)/qdd_max;
+	  qacc = qdi*tacc + 0.5*qdd_max*tacc*tacc;
+	  qdec = qacc;
+	  tconst = ((qf-qi)-qacc-qdec)/qd_max;
+	  tdec = tacc;
 
 	  if(qdi+qdd_max*t_half >= qd_max)
 	  {
-		  initime = micros();
+		  initime = time;
 		  Trajectstate = 2;
 	  }
 	  else
 	  {
-		  initime = micros();
+		  initime = time;
 		  Trajectstate = 1;
 	  }
 	  break;
 
 	case 1:
-	  if(micros() <= t_half + initime){
-	   setacc = qdd_max;
-	   setvelocity = qdi + setacc*(micros()-initime);
-	   setposition = qi + qdi*(micros()-initime)+0.5*setacc*(micros()-initime)*(micros()-initime);
+	  if(time <= t_half + initime)
+	  {
+		  setacc = qdd_max;
+		  setvelocity = qdi + setacc*(time-initime);
+		  setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
 
-	   qi_1 = setposition;
-	   qdi_1 = setvelocity;
+		  qi_1 = setposition;
+		  qdi_1 = setvelocity;
+		  time += 0.001;
 	  }
-	  else if(t_half + initime < micros() && micros() <= (2*t_half) + initime)
+	  else if(t_half + initime < time && time <= (2*t_half) + initime)
 	  {
 		  setacc = -qdd_max;
-		  setvelocity = qdi_1 + setacc*(micros()-initime-t_half);
-		  setposition = qi_1 + qdi_1*(micros()-initime-t_half)+0.5*setacc*(micros()-initime)*(micros()-initime);
+		  setvelocity = qdi_1 + setacc*(time-initime-t_half);
+		  setposition = qi_1 + qdi_1*(time-initime-t_half)+0.5*setacc*(time-initime-t_half)*(time-initime-t_half);
+		  time += 0.001;
 	  }
-	  else if(micros()>(2*t_half) + initime)
-	  {
-		  Trajectstate = 3;
-	  }
+//	  else if(time>(2*t_half) + initime)
+//	  {
+//		  Trajectstate = 3;
+//	  }
 	break;
 
 	case 2:
-	 if(micros() <= tacc + initime)
+	 if(time <= tacc + initime)
 	 {
 		 setacc = qdd_max;
-		 setvelocity = qdi + setacc*(micros()-initime);
-		 setposition = qi + qdi*(micros()-initime)+0.5*setacc*(micros()-initime)*(micros()-initime);
+		 setvelocity = qdi + setacc*(time-initime);
+		 setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
 
 		 qi_1 = setposition;
 		 qdi_1 = setvelocity;
+		 time += 0.001;
 	 }
-	 else if(tacc+initime < micros() && micros() <= initime+tacc+tconst)
+	 else if(tacc+initime < time && time <= initime+tacc+tconst)
 	 {
 		 setacc = 0;
 		 setvelocity = qd_max;
-		 setposition = qi_1 + qd_max*(micros()-initime-tacc);
+		 setposition = qi_1 + qd_max*(time-initime-tacc);
 
 		 qi_2 = setposition;
 		 qdi_2 = setvelocity;
+		 time += 0.001;
 	 }
-	 else if(tacc+tconst+initime < micros() && micros() <= tacc+tconst+tdec+initime)
+	 else if(tacc+tconst+initime < time && time <= tacc+tconst+tdec+initime)
 	 {
 		 setacc = -qdd_max;
-		 setvelocity = qdi_2 + setacc*(micros()-initime-tacc-tconst);
-		 setposition = qi_2 + qdi_2*(micros()-initime-tacc-tconst)+0.5*setacc*(micros()-initime-tacc-tconst)*(micros()-initime-tacc-tconst);
+		 setvelocity = qdi_2 + setacc*(time-initime-tacc-tconst);
+		 setposition = qi_2 + qdi_2*(time-initime-tacc-tconst)+0.5*setacc*(time-initime-tacc-tconst)*(time-initime-tacc-tconst);
+		 time += 0.001;
 	 }
-	 else if(micros() > initime+tacc+tconst+tdec){
-		 Trajectstate = 3;
-	 }
+//	 else if(time > initime+tacc+tconst+tdec){
+//		 Trajectstate = 3;
+//	 }
 	 break;
 	}
 }
