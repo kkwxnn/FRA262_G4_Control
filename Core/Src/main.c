@@ -125,6 +125,7 @@ float Ki_v = 0;
 float Kd_v = 0;
 
 //Joystick
+int state = 0;
 typedef struct LocationStructure
 {
 	float L1[2];
@@ -173,11 +174,13 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 inline uint64_t micros();
 void QEIEncoderPositionVelocity_Update();
+void VelocityApprox();
 void JoystickControl();
 void JoystickPinUpdate();
 void JoystickLocationState();
 float PIDcal();
 void TrajectoryGenerator();
+void Homing();
 
 /* USER CODE END PFP */
 
@@ -244,12 +247,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  static uint32_t timestamp1 = 0;
-//	  if(HAL_GetTick() > timestamp1)
-//	  {
-//		  timestamp1 = HAL_GetTick() + 1;
-//		  TrajectoryGenerator();
-//	  }
+
+	  JoystickPinUpdate(); //Check Pin Flag
 
 	  switch(scheduler)
 	  {
@@ -258,7 +257,6 @@ int main(void)
 		  //QEI
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
 		  JoystickControl(); //Read Pin form Joystick
-		  JoystickPinUpdate(); //Check Pin Flag
 		  JoystickLocationState();
 		  break;
 	  //Trajectory
@@ -270,37 +268,57 @@ int main(void)
 		  if(currentTime > timestamp0)
 		  {
 			  timestamp0 = currentTime + 1000;
-			  QEIEncoderPositionVelocity_Update();
-			  velocity = QEIData.QEIVelocity;
+			  VelocityApprox();
 		  }
 
-		  static uint32_t timestamp1 = 0;
-		  if(HAL_GetTick() > timestamp1)
-		  {
-			  timestamp1 = HAL_GetTick() + 0.5;
-			  TrajectoryGenerator();
-		  }
+//		  static uint32_t timestamp1 = 0;
+//		  if(HAL_GetTick() > timestamp1)
+//		  {
+//			  timestamp1 = HAL_GetTick() + 0.5;
+//			  TrajectoryGenerator();
+//		  }
 
 		  //PWM & Motor drive & PID
 		  static uint64_t timestamp2 = 0;
-			  if (micros()>= timestamp2)
-			  {
-				  timestamp2 = micros() + 10;
-				  duty = PIDcal();
-				  if (duty >= 0)
-				  {
-					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
-				  }
-				  else if (duty < 0)
-				  {
-					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-					  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
-				  }
-			  }
-			  break;
+		  if (micros()>= timestamp2)
+		  {
+			  timestamp2 = micros() + 10;
+			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,5000);
+//			  duty = PIDcal();
+//			  if (duty >= 0)
+//			  {
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+//			  }
+//			  else if (duty < 0)
+//			  {
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
+//			  }
+		  }
+
+		  if (ResetButton.flag == 1)
+		  {
+			  ResetButton.flag = 0;
+			  scheduler = 0;
+		  }
+		  break;
+
+	  //Proximity
+	  case 2:
+		  Homing();
+		  break;
+
+	  //Home
+	  case 3:
+		  if (ResetButton.flag == 1)
+		  {
+				ResetButton.flag = 0;
+				scheduler = 0;
+		  }
+		  break;
 	  }
-//
   }
   /* USER CODE END 3 */
 }
@@ -675,23 +693,17 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
+  /*Configure GPIO pins : B1_Pin PC1 PC2 PC3 */
+  GPIO_InitStruct.Pin = B1_Pin|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA4 PA5 PA10 */
   GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PB0 PB5 PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_5|GPIO_PIN_6;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB10 PB4 */
   GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_4;
@@ -700,9 +712,46 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PB5 PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_2 || GPIO_Pin == GPIO_PIN_3)
+	{
+		scheduler = 2;
+	}
+}
+
+void Homing()
+{
+	__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+	__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+
+	if (ResetButton.flag == 1)
+	{
+		ResetButton.flag = 0;
+		scheduler = 0;
+	}
+
+}
+
 void HAL_TIM_PeroidElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim == &htim5)
@@ -738,6 +787,13 @@ void QEIEncoderPositionVelocity_Update()
 	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
+void VelocityApprox()
+{
+	static int16_t lastposition = 0;
+	velocity = (position - lastposition)/0.001; //pulse/s
+	lastposition = position;
+}
+
 float PIDcal()
 {
 	//position control
@@ -751,7 +807,7 @@ float PIDcal()
 
 	//velocity control
 	sumsetvelocity = u_position + setvelocity;
-	errorvelocity = sumsetvelocity - QEIData.QEIVelocity;
+	errorvelocity = sumsetvelocity - velocity;
 
 	integral_v = integral_v + errorvelocity;
 	derivative_v = errorvelocity - pre_errorvelocity;
@@ -868,7 +924,6 @@ void JoystickControl()
 
 void JoystickLocationState()
 {
-	static int state = 0;
 	switch(state)
 	{
 	case 0:
@@ -981,6 +1036,7 @@ void JoystickLocationState()
 		}
 		break;
 	case 4:
+		state = 0;
 		scheduler = 1;
 		if (ResetButton.flag == 1)
 		{
@@ -997,7 +1053,7 @@ void TrajectoryGenerator()
 	{
 	case 0: //initial Condition & Case Check
 		qi = position;
-		qf = 10000; //nonny
+		qf = 5000; //nonny
 		qdi = 0;
 		qd_max = 11111.11; //pulse/s
 		qdd_max = 8888.88; //pulse/s
