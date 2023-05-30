@@ -117,10 +117,10 @@ float errorvelocity = 0;
 
 float setacc = 0;
 
-float Kp_p = 1;
+float Kp_p = 0.5;
 float Ki_p = 0;
 float Kd_p = 0;
-float Kp_v = 1;
+float Kp_v = 0.5;
 float Ki_v = 0;
 float Kd_v = 0;
 
@@ -263,39 +263,36 @@ int main(void)
 	  case 1:
 		  //QEI
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
-		  static uint64_t timestamp0 = 0;
-		  currentTime = micros();
-		  if(currentTime > timestamp0)
+		  static uint32_t timestamp0 = 0;
+		  if(HAL_GetTick() > timestamp0)
 		  {
-			  timestamp0 = currentTime + 1000;
+			  timestamp0 = HAL_GetTick() + 0.1;
 			  VelocityApprox();
 		  }
 
-//		  static uint32_t timestamp1 = 0;
-//		  if(HAL_GetTick() > timestamp1)
-//		  {
-//			  timestamp1 = HAL_GetTick() + 0.5;
-//			  TrajectoryGenerator();
-//		  }
+		  static uint32_t timestamp1 = 0;
+		  if(HAL_GetTick() > timestamp1)
+		  {
+			  timestamp1 = HAL_GetTick() + 0.5;
+			  TrajectoryGenerator();
+		  }
 
 		  //PWM & Motor drive & PID
-		  static uint64_t timestamp2 = 0;
-		  if (micros()>= timestamp2)
+		  static uint32_t timestamp2 = 0;
+		  if (HAL_GetTick()>= timestamp2)
 		  {
-			  timestamp2 = micros() + 10;
-			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,5000);
-//			  duty = PIDcal();
-//			  if (duty >= 0)
-//			  {
-//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
-//			  }
-//			  else if (duty < 0)
-//			  {
-//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
-//			  }
+			  timestamp2 = HAL_GetTick() + 0.5;
+			  duty = PIDcal();
+			  if (duty >= 0)
+			  {
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+			  }
+			  else if (duty < 0)
+			  {
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
+			  }
 		  }
 
 		  if (ResetButton.flag == 1)
@@ -452,7 +449,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 83;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 9999;
+  htim1.Init.Period = 999;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -523,7 +520,7 @@ static void MX_TIM3_Init(void)
   htim3.Init.Period = QEI_PERIOD-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -693,9 +690,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : B1_Pin PC1 PC2 PC3 */
-  GPIO_InitStruct.Pin = B1_Pin|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  /*Configure GPIO pins : PC2 PC3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
@@ -719,9 +716,6 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
@@ -738,6 +732,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		scheduler = 2;
 	}
 }
+
 
 void Homing()
 {
@@ -806,16 +801,17 @@ float PIDcal()
 	pre_errorposition = errorposition;
 
 	//velocity control
-	sumsetvelocity = u_position + setvelocity;
-	errorvelocity = sumsetvelocity - velocity;
+//	sumsetvelocity = u_position + setvelocity;
+//	errorvelocity = sumsetvelocity - velocity;
+//
+//	integral_v = integral_v + errorvelocity;
+//	derivative_v = errorvelocity - pre_errorvelocity;
+//	duty = Kp_v*errorvelocity + Ki_v*integral_v + Kd_v*derivative_v;
+//
+//	pre_errorvelocity = errorvelocity;
 
-	integral_v = integral_v + errorvelocity;
-	derivative_v = errorvelocity - pre_errorvelocity;
-	duty = Kp_v*errorvelocity + Ki_v*integral_v + Kd_v*derivative_v;
-
-	pre_errorvelocity = errorvelocity;
-
-	return duty;
+//	return duty;
+	return u_position;
 }
 
 void JoystickPinUpdate()
@@ -887,11 +883,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 2150)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,1000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,400);
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,1000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,400);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -906,11 +902,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 2150)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,250);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,200);
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,250);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,200);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -1055,8 +1051,8 @@ void TrajectoryGenerator()
 		qi = position;
 		qf = 5000; //nonny
 		qdi = 0;
-		qd_max = 11111.11; //pulse/s
-		qdd_max = 8888.88; //pulse/s
+		qd_max = 13333.33; //pDulse/s
+		qdd_max = 11111.11; //pulse/s
 
 	  if(qf > qi)
 	  {
