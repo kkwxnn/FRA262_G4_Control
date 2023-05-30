@@ -42,6 +42,8 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
@@ -50,14 +52,16 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-//scheduler
+// scheduler //
 int scheduler = 0;
+int HoleSequence = 0 ;
+int TaskType = 1;
 
-//microsecond timer
+// microsecond timer //
 uint64_t _micros = 0;
 int64_t currentTime;
 
-//Motor drive
+// Motor drive //
 typedef struct _QEIStructure
 {
 	uint32_t data[2]; //position data contenter
@@ -73,7 +77,7 @@ int direction = 0;
 int R_EN = 1;
 int L_EN = 1;
 
-//Trajectory
+// Trajectory //
 int Trajectstate = 0;
 float time = 0;
 
@@ -97,7 +101,7 @@ float qdec ;
 float tconst ;
 float tdec ;
 
-//PID
+// PID //
 int16_t position ;
 float setposition = 0;
 float errorposition = 0;
@@ -124,21 +128,23 @@ float Kp_v = 0.5;
 float Ki_v = 0;
 float Kd_v = 0;
 
-//Joystick
+// Joystick //
 int state = 0;
 typedef struct LocationStructure
 {
 	float L1[2];
 	float L2[2];
-	float hole_1[2];
-	float hole_2[2];
-	float hole_3[2];
-	float hole_4[2];
-	float hole_5[2];
-	float hole_6[2];
-	float hole_7[2];
-	float hole_8[2];
-	float hole_9[2];
+	float hole_x[9];
+	float hole_y[9];
+//	float hole_1[2];
+//	float hole_2[2];
+//	float hole_3[2];
+//	float hole_4[2];
+//	float hole_5[2];
+//	float hole_6[2];
+//	float hole_7[2];
+//	float hole_8[2];
+//	float hole_9[2];
 }Location;
 Location PickTray;
 Location PlaceTray;
@@ -159,6 +165,25 @@ Button RoughButton;
 
 int XYSwitch[2];
 
+// End Effector //
+uint8_t EndEffectorWriteFlag = 0;
+uint8_t EndEffectorReadFlag = 0;
+uint8_t EndEffectorDataReadBack[4];
+
+uint8_t SoftReset[4] = {0x00, 0xFF, 0x55, 0xAA};
+uint8_t Emergency[1] = {0xF1};
+uint8_t QuitEmergency[4] = {0xE5, 0x7A, 0xFF, 0x81};
+uint8_t TestModeOn[2] = {0x01, 0x11};
+uint8_t TestModeOff[2] = {0x01, 0x00};
+uint8_t RunModeOn[2] = {0x10, 0x13};
+uint8_t RunModeOff[2] = {0x10, 0x8C};
+uint8_t PickData[2] = {0x10, 0x5A};
+uint8_t PlaceData[2] = {0x10, 0x69};
+
+int EndEffectorState = 0 ;
+
+// Proximity //
+int Proximity = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -171,9 +196,8 @@ static void MX_TIM3_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-inline uint64_t micros();
-void QEIEncoderPositionVelocity_Update();
 void VelocityApprox();
 void JoystickControl();
 void JoystickPinUpdate();
@@ -181,7 +205,7 @@ void JoystickLocationState();
 float PIDcal();
 void TrajectoryGenerator();
 void Homing();
-
+void EndEffectorWrite();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -224,6 +248,7 @@ int main(void)
   MX_TIM1_Init();
   MX_ADC1_Init();
   MX_USART1_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
 
@@ -238,29 +263,49 @@ int main(void)
 
   HAL_ADC_Start_DMA(&hadc1, XYSwitch, 2);
 
+  EndEffectorState = 0;
+  EndEffectorWriteFlag = 1;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
+  	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
 	  switch(scheduler)
 	  {
-	  //Joystick
+
+	  //JoyStick
 	  case 0:
 		  //QEI
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
-		  JoystickControl(); //Read Pin form Joystick
+		  JoystickControl(); //Read Pin form JoyStick
 		  JoystickLocationState();
 		  break;
+
+	  //Go Pick
+	  case 1 :
+		  qf = PickTray.hole_y[HoleSequence];
+		  scheduler = 3;
+		  break;
+
+	  //Go Place
+	  case 2 :
+		  qf = PlaceTray.hole_y[HoleSequence];
+		  scheduler = 3;
+		  break;
+
 	  //Trajectory
-	  case 1:
+	  case 3:
 		  //QEI
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
 		  static uint32_t timestamp0 = 0;
@@ -295,6 +340,17 @@ int main(void)
 			  }
 		  }
 
+		  // Check Final Position
+		  if(position == qf){
+			  static int FinalTime = 0;
+			  FinalTime += 1;
+			  if(FinalTime >= 42000000){
+				  // End Effector //
+				  scheduler = 4;
+			  }
+		  }
+
+		  // Reset Button
 		  if (ResetButton.flag == 1)
 		  {
 			  ResetButton.flag = 0;
@@ -303,19 +359,31 @@ int main(void)
 		  break;
 
 	  //Proximity
-	  case 2:
+	  case 4 :
+		  if (HoleSequence == 9)
+		  {
+			  scheduler = 0;
+		  }
+		  else if (HoleSequence < 9)
+		  {
+			  if (TaskType == 1)
+			  {
+				  EndEffectorState = 4;
+				  EndEffectorWriteFlag = 1;
+			  }
+			  else if (TaskType == -1)
+			  {
+				  EndEffectorState = 5;
+				  EndEffectorState = 1;
+			  }
+		  }
+		  break;
+
+	  //Emergency
+	  case 5:
 		  Homing();
 		  break;
 
-	  //Home
-	  case 3:
-		  if (ResetButton.flag == 1)
-		  {
-				ResetButton.flag = 0;
-				scheduler = 0;
-		  }
-		  break;
-	  }
   }
   /* USER CODE END 3 */
 }
@@ -424,6 +492,40 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -690,6 +792,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin : PC1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PC2 PC3 */
   GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
@@ -727,59 +835,119 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if(GPIO_Pin == GPIO_PIN_2 || GPIO_Pin == GPIO_PIN_3)
+	if(GPIO_Pin == GPIO_PIN_2)
 	{
-		scheduler = 2;
+		scheduler = 5;
+		Proximity = 1;
+	}
+	else if(GPIO_Pin == GPIO_PIN_3)
+	{
+		scheduler = 5;
+		Proximity = 2;
 	}
 }
 
-
 void Homing()
 {
-	__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-	__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+	if (Proximity == 1)
+	{
+//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+	}
+
+	else if (Proximity == 2)
+	{
+//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+	}
+
+	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1) == 1)
+	{
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		scheduler = 0;
+	}
 
 	if (ResetButton.flag == 1)
 	{
 		ResetButton.flag = 0;
 		scheduler = 0;
 	}
-
 }
 
-void HAL_TIM_PeroidElapsedCallback(TIM_HandleTypeDef *htim)
+void EndEffectorWrite()
 {
-	if(htim == &htim5)
+	switch(EndEffectorState)
 	{
-		_micros += UINT32_MAX;
+	case 0:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, SoftReset, 4, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 1:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOn, 2, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 2:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOff, 2, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 3:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOn, 2, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 4:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PickData, 2, 100);
+				EndEffectorWriteFlag = 0;
+				HAL_Delay(2000);
+				TaskType *= -1;
+			}
+		break;
+	case 5:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PlaceData, 2, 100);
+				EndEffectorWriteFlag = 0;
+				HAL_Delay(2000);
+				TaskType *= -1;
+				HoleSequence += 1;
+			}
+		break;
+	case 6:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOff, 2, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 7:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, Emergency, 1, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 8:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, QuitEmergency, 4, 100);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
 	}
-}
-
-
-uint64_t micros()
-{
-	return __HAL_TIM_GET_COUNTER(&htim5)+_micros;
-}
-
-
-void QEIEncoderPositionVelocity_Update()
-{
-	QEIData.timestamp[0] = micros();
-	uint32_t counterPosition = __HAL_TIM_GET_COUNTER(&htim3);
-	QEIData.data[0] = counterPosition;
-
-	QEIData.QEIPosition = counterPosition % 1600;
-
-	int32_t diffPosition = QEIData.data[0]-QEIData.data[1];
-	float difftime = (QEIData.timestamp[0]-QEIData.timestamp[1]);
-
-	if(diffPosition > QEI_PERIOD>>1) diffPosition -= QEI_PERIOD;
-	if(diffPosition < -(QEI_PERIOD>>1)) diffPosition += QEI_PERIOD;
-
-	QEIData.QEIVelocity = (diffPosition * 1000000)/difftime;
-
-	QEIData.data[1] = QEIData.data[0];
-	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
 void VelocityApprox()
@@ -923,6 +1091,9 @@ void JoystickLocationState()
 	switch(state)
 	{
 	case 0:
+		EndEffectorState = 1;
+		EndEffectorWriteFlag = 1;
+	case 1:
 		PickTray.L1[1] = 0;
 		PickTray.L2[1] = 0;
 		PlaceTray.L1[1] = 0;
@@ -931,10 +1102,10 @@ void JoystickLocationState()
 		{
 			PickTray.L1[1] = position;
 			GetPositionButton.flag = 0;
-			state = 1;
+			state = 2;
 		}
 		break;
-	case 1:
+	case 2:
 		if (GetPositionButton.flag == 1)
 		{
 			PickTray.L2[1] = position;
@@ -942,54 +1113,54 @@ void JoystickLocationState()
 			cos_Theta = PickTray.L2[0]/(sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1]))));
 			sin_Theta = PickTray.L2[1]/(sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1]))));
 
-			PickTray.hole_1[0] = (cos_Theta*10)+(-sin_Theta*-10);
-			PickTray.hole_1[1] = (sin_Theta*10)+(cos_Theta*-10);
+			PickTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10);
+			PickTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10);
 
-			PickTray.hole_2[0] = (cos_Theta*30)+(-sin_Theta*-10);
-			PickTray.hole_2[1] = (sin_Theta*30)+(cos_Theta*-10);
+			PickTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*-10);
+			PickTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*-10);
 
-			PickTray.hole_3[0] = (cos_Theta*50)+(-sin_Theta*-10);
-			PickTray.hole_3[1] = (sin_Theta*50)+(cos_Theta*-10);
+			PickTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*-10);
+			PickTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*-10);
 
-			PickTray.hole_4[0] = (cos_Theta*10)+(-sin_Theta*-25);
-			PickTray.hole_4[1] = (sin_Theta*10)+(cos_Theta*-25);
+			PickTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*-25);
+			PickTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*-25);
 
-			PickTray.hole_5[0] = (cos_Theta*30)+(-sin_Theta*-25);
-			PickTray.hole_5[1] = (sin_Theta*30)+(cos_Theta*-25);
+			PickTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*-25);
+			PickTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*-25);
 
-			PickTray.hole_6[0] = (cos_Theta*50)+(-sin_Theta*-25);
-			PickTray.hole_6[1] = (sin_Theta*50)+(cos_Theta*-25);
+			PickTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*-25);
+			PickTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*-25);
 
-			PickTray.hole_7[0] = (cos_Theta*10)+(-sin_Theta*-40);
-			PickTray.hole_7[1] = (sin_Theta*10)+(cos_Theta*-40);
+			PickTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*-40);
+			PickTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*-40);
 
-			PickTray.hole_8[0] = (cos_Theta*30)+(-sin_Theta*-40);
-			PickTray.hole_8[1] = (sin_Theta*30)+(cos_Theta*-40);
+			PickTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*-40);
+			PickTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*-40);
 
-			PickTray.hole_9[0] = (cos_Theta*50)+(-sin_Theta*-40);
-			PickTray.hole_9[1] = (sin_Theta*50)+(cos_Theta*-40);
-			state = 2;
-		}
-		else if (ResetButton.flag == 1)
-		{
-			ResetButton.flag = 0;
-			state = 0;
-		}
-		break;
-	case 2:
-		if (GetPositionButton.flag == 1)
-		{
-			PlaceTray.L1[1] = position;
-			GetPositionButton.flag = 0;
+			PickTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40);
+			PickTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40);
 			state = 3;
 		}
 		else if (ResetButton.flag == 1)
 		{
 			ResetButton.flag = 0;
-			state = 0;
+			state = 1;
 		}
 		break;
 	case 3:
+		if (GetPositionButton.flag == 1)
+		{
+			PlaceTray.L1[1] = position;
+			GetPositionButton.flag = 0;
+			state = 4;
+		}
+		else if (ResetButton.flag == 1)
+		{
+			ResetButton.flag = 0;
+			state = 1;
+		}
+		break;
+	case 4:
 		if (GetPositionButton.flag == 1)
 		{
 			PlaceTray.L2[1] = position;
@@ -997,47 +1168,52 @@ void JoystickLocationState()
 			cos_Theta = PlaceTray.L2[0]/(sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1]))));
 			sin_Theta = PlaceTray.L2[1]/(sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1]))));
 
-			PlaceTray.hole_1[0] = (cos_Theta*10)+(-sin_Theta*-10);
-			PlaceTray.hole_1[1] = (sin_Theta*10)+(cos_Theta*-10);
+			PlaceTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10);
+			PlaceTray.hole_y[1] = (sin_Theta*10)+(cos_Theta*-10);
 
-			PlaceTray.hole_2[0] = (cos_Theta*30)+(-sin_Theta*-10);
-			PlaceTray.hole_2[1] = (sin_Theta*30)+(cos_Theta*-10);
+			PlaceTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*-10);
+			PlaceTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*-10);
 
-			PlaceTray.hole_3[0] = (cos_Theta*50)+(-sin_Theta*-10);
-			PlaceTray.hole_3[1] = (sin_Theta*50)+(cos_Theta*-10);
+			PlaceTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*-10);
+			PlaceTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*-10);
 
-			PlaceTray.hole_4[0] = (cos_Theta*10)+(-sin_Theta*-25);
-			PlaceTray.hole_4[1] = (sin_Theta*10)+(cos_Theta*-25);
+			PlaceTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*-25);
+			PlaceTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*-25);
 
-			PlaceTray.hole_5[0] = (cos_Theta*30)+(-sin_Theta*-25);
-			PlaceTray.hole_5[1] = (sin_Theta*30)+(cos_Theta*-25);
+			PlaceTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*-25);
+			PlaceTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*-25);
 
-			PlaceTray.hole_6[0] = (cos_Theta*50)+(-sin_Theta*-25);
-			PlaceTray.hole_6[1] = (sin_Theta*50)+(cos_Theta*-25);
+			PlaceTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*-25);
+			PlaceTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*-25);
 
-			PlaceTray.hole_7[0] = (cos_Theta*10)+(-sin_Theta*-40);
-			PlaceTray.hole_7[1] = (sin_Theta*10)+(cos_Theta*-40);
+			PlaceTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*-40);
+			PlaceTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*-40);
 
-			PlaceTray.hole_8[0] = (cos_Theta*30)+(-sin_Theta*-40);
-			PlaceTray.hole_8[1] = (sin_Theta*30)+(cos_Theta*-40);
+			PlaceTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*-40);
+			PlaceTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*-40);
 
-			PlaceTray.hole_9[0] = (cos_Theta*50)+(-sin_Theta*-40);
-			PlaceTray.hole_9[1] = (sin_Theta*50)+(cos_Theta*-40);
-			state = 4;
+			PlaceTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40);
+			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40);
+			state = 5;
 		}
 		else if (ResetButton.flag == 1)
 		{
 			ResetButton.flag = 0;
-			state = 0;
+			state = 1;
 		}
 		break;
-	case 4:
-		state = 0;
+	case 5:
+		EndEffectorState = 2;
+		EndEffectorWriteFlag = 1;
+		HAL_Delay(10);
+		EndEffectorState = 3;
+		EndEffectorWriteFlag = 1;
+		state = 1;
 		scheduler = 1;
 		if (ResetButton.flag == 1)
 		{
 			ResetButton.flag = 0;
-			state = 0;
+			state = 1;
 		}
 		break;
 	}
@@ -1049,7 +1225,6 @@ void TrajectoryGenerator()
 	{
 	case 0: //initial Condition & Case Check
 		qi = position;
-		qf = 5000; //nonny
 		qdi = 0;
 		qd_max = 13333.33; //pDulse/s
 		qdd_max = 11111.11; //pulse/s
