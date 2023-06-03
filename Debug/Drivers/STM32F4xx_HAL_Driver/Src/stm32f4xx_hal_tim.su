@@ -84,6 +84,8 @@
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:5750:13:HAL_TIM_TriggerCallback	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:5765:13:HAL_TIM_TriggerHalfCpltCallback	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:5780:13:HAL_TIM_ErrorCallback	16	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:5826:19:HAL_TIM_RegisterCallback	32	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:6069:19:HAL_TIM_UnRegisterCallback	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:6338:22:HAL_TIM_Base_GetState	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:6348:22:HAL_TIM_OC_GetState	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:6358:22:HAL_TIM_PWM_GetState	16	static
@@ -117,3 +119,4 @@
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:7507:13:TIM_ITRx_SetConfig	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:7537:6:TIM_ETR_SetConfig	32	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:7567:6:TIM_CCxChannelCmd	32	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c:7591:6:TIM_ResetCallback	16	static

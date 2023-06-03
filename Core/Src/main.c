@@ -94,7 +94,8 @@ float tconst ;
 float tdec ;
 
 // PID //
-int16_t position ;
+int16_t position = 0;
+uint16_t Yactualposition = 0;
 float setposition = 0;
 float errorposition = 0;
 float u_position = 0;
@@ -139,7 +140,6 @@ Location PlaceTray;
 float cos_Theta = 0;
 float sin_Theta = 0;
 float Theta = 0;
-float pi = 22/7;
 
 typedef struct ButtonStructure
 {
@@ -203,6 +203,7 @@ float PIDcal();
 void TrajectoryGenerator();
 void Homing();
 void EndEffectorWrite();
+void Routine();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -247,6 +248,12 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
+  hmodbus.huart = &huart2;
+  hmodbus.htim = &htim11;
+  hmodbus.slaveAddress = 0x15;
+  hmodbus.RegisterSize = 70;
+  Modbus_init(&hmodbus, registerFrame);
+
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
 
   HAL_TIM_Base_Start(&htim1); //Start Timer1
@@ -268,12 +275,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-  }
+	  Modbus_Protocal_Worker();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
+  	  Routine(); //Sent Actual Position Velocity Acceleration to Base System
   	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
@@ -394,7 +401,7 @@ int main(void)
 	  case 5:
 		  Homing();
 		  break;
-
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -421,9 +428,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 16;
-  RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 100;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -439,7 +446,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -823,8 +830,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA4 PA5 PA10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_10;
+  /*Configure GPIO pins : PA5 PA10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -1004,11 +1011,20 @@ void VelocityApprox()
 	lastposition = position;
 }
 
-void AccelerationApprox(){
+void AccelerationApprox()
+{
 	static float LastVelo = 0;
-	Accel = (velocity - LastVelo);
+	Accel = (velocity - LastVelo);	//pulse/s^2
 	LastVelo = velocity;
 
+}
+
+void Routine()
+{
+	Yactualposition = position*0.045;	//mm
+	registerFrame[17].U16 = Yactualposition;	//mm		//Y Actual Position
+	registerFrame[18].U16 = velocity*0.045; //mm/s		//Y Actual Speed
+	registerFrame[19].U16 = Accel*0.045; 	//mm/s^2	//Y Actual Acceleration
 }
 
 float PIDcal()
@@ -1179,7 +1195,7 @@ void JoystickControl()
 		}
 		break;
 
-	//JoyStick Home//
+	//JoyStick Home
 	case 2:
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,200);
@@ -1216,6 +1232,7 @@ void JoystickLocationState()
 
 	switch(state)
 	{
+	//Get Pick Tray 1st Point
 	case 1:
 		PickTray.L1[0] = 0;
 		PickTray.L2[0] = 0;
@@ -1229,6 +1246,8 @@ void JoystickLocationState()
 			state = 2;
 		}
 		break;
+
+	//Get Pick Tray 2nd Point
 	case 2:
 		if (GetPositionButton.flag == 1)
 		{
@@ -1268,7 +1287,7 @@ void JoystickLocationState()
 
 			PickTray.origin_x = PickTray.L1[0]+(50*sin_Theta);
 			PickTray.origin_y = PickTray.L1[1]-(50*cos_Theta);
-			PickTray.orientation = acosf(cos_Theta)*(180/pi);
+			PickTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
 			registerFrame[32].U16 = PickTray.origin_x * 10;
 			registerFrame[33].U16 = PickTray.origin_y * 10;
@@ -1282,6 +1301,8 @@ void JoystickLocationState()
 			state = 1;
 		}
 		break;
+
+	//Get Place Tray 1st Point
 	case 3:
 		PlaceTray.L1[0] = 0;
 		PlaceTray.L2[0] = 0;
@@ -1300,6 +1321,8 @@ void JoystickLocationState()
 			state = 1;
 		}
 		break;
+
+	//Get Place Tray 2nd Point
 	case 4:
 		if (GetPositionButton.flag == 1)
 		{
@@ -1339,7 +1362,7 @@ void JoystickLocationState()
 
 			PlaceTray.origin_x = PlaceTray.L1[0]+(50*sin_Theta);
 			PlaceTray.origin_y = PlaceTray.origin_y * 10;
-			PlaceTray.orientation = acosf(cos_Theta)*(180/pi);
+			PlaceTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
 			registerFrame[35].U16 = PlaceTray.origin_x * 10;
 			registerFrame[36].U16 = PlaceTray.origin_y * 10;

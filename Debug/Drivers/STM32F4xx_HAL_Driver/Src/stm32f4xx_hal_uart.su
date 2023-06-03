@@ -5,6 +5,10 @@
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:665:19:HAL_UART_DeInit	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:710:13:HAL_UART_MspInit	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:725:13:HAL_UART_MspDeInit	16	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:754:19:HAL_UART_RegisterCallback	32	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:876:19:HAL_UART_UnRegisterCallback	24	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:979:19:HAL_UART_RegisterRxEventCallback	24	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:1016:19:HAL_UART_UnRegisterRxEventCallback	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:1136:19:HAL_UART_Transmit	48	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:1224:19:HAL_UART_Receive	48	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:1315:19:HAL_UART_Transmit_IT	24	static
@@ -40,6 +44,7 @@
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:2869:19:HAL_HalfDuplex_EnableReceiver	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:2926:23:HAL_UART_GetState	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:2941:10:HAL_UART_GetError	16	static
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:2964:6:UART_InitCallbacksToDefault	16	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:2986:13:UART_DMATransmitCplt	72	static,ignoring_inline_asm
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:3021:13:UART_DMATxHalfCplt	24	static
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c:3040:13:UART_DMAReceiveCplt	120	static,ignoring_inline_asm
