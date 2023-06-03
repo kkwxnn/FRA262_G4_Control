@@ -2390,7 +2390,7 @@ int main(void)
  80015d4:	48a4      	ldr	r0, [pc, #656]	; (8001868 <main+0x328>)
  80015d6:	f003 f959 	bl	800488c <HAL_ADC_Start_DMA>
 
-  EndEffectorState = 0;			//SoftReset
+  EndEffectorState = 0;	//SoftReset
  80015da:	4ba4      	ldr	r3, [pc, #656]	; (800186c <main+0x32c>)
  80015dc:	2200      	movs	r2, #0
  80015de:	601a      	str	r2, [r3, #0]
@@ -2409,7 +2409,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-  	  Routine(); //Sent Actual Position Velocity Acceleration to Base System
+  	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
  80015ea:	f000 ff75 	bl	80024d8 <Routine>
   	  EndEffectorWrite(); //I2C
  80015ee:	f000 fd91 	bl	8002114 <EndEffectorWrite>

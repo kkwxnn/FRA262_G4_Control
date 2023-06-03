@@ -266,7 +266,7 @@ int main(void)
 
   HAL_ADC_Start_DMA(&hadc1, XYSwitch, 2);
 
-  EndEffectorState = 0;			//SoftReset
+  EndEffectorState = 0;	//SoftReset
   EndEffectorWriteFlag = 1;
 
   /* USER CODE END 2 */
@@ -280,7 +280,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-  	  Routine(); //Sent Actual Position Velocity Acceleration to Base System
+  	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
   	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
@@ -826,7 +826,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : PC2 PC3 */
   GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
