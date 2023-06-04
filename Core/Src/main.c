@@ -95,6 +95,7 @@ float tdec ;
 
 // PID //
 int16_t position = 0;
+float position_f = 0;
 uint16_t Yactualposition = 0;
 float setposition = 0;
 float errorposition = 0;
@@ -279,8 +280,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  VelocityApprox();
+	  AccelerationApprox();
+	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
 
-  	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
   	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
@@ -1021,10 +1024,11 @@ void AccelerationApprox()
 
 void Routine()
 {
-	Yactualposition = position*0.045;	//mm
-	registerFrame[17].U16 = Yactualposition;	//mm		//Y Actual Position
-	registerFrame[18].U16 = velocity*0.045; //mm/s		//Y Actual Speed
-	registerFrame[19].U16 = Accel*0.045; 	//mm/s^2	//Y Actual Acceleration
+	position_f = position;
+	Yactualposition = position_f*0.45;	//mm*10
+	registerFrame[17].U16 = Yactualposition;	//mm*10		//Y Actual Position
+	registerFrame[18].U16 = velocity*0.45; //mm/s*10		//Y Actual Speed
+	registerFrame[19].U16 = Accel*0.45; 	//mm/s^2*10		//Y Actual Acceleration
 }
 
 float PIDcal()
