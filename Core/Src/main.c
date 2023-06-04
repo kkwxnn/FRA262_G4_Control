@@ -96,7 +96,7 @@ float tdec ;
 // PID //
 int16_t position = 0;
 float position_f = 0;
-uint16_t Yactualposition = 0;
+int16_t Yactualposition = 0;
 float setposition = 0;
 float errorposition = 0;
 float u_position = 0;
@@ -119,9 +119,9 @@ float setacc = 0;
 float Kp_p = 0.5;
 float Ki_p = 0;
 float Kd_p = 0;
-float Kp_v = 0.5;
-float Ki_v = 0;
-float Kd_v = 0;
+//float Kp_v = 0.5;
+//float Ki_v = 0;
+//float Kd_v = 0;
 
 // Joystick //
 int state = 1;
@@ -249,6 +249,7 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
+
   hmodbus.huart = &huart2;
   hmodbus.htim = &htim11;
   hmodbus.slaveAddress = 0x15;
@@ -277,6 +278,12 @@ int main(void)
   while (1)
   {
 	  Modbus_Protocal_Worker();
+	  static uint32_t heartbeat = 0;
+	  if(heartbeat < HAL_GetTick())
+	  {
+		  heartbeat = HAL_GetTick()+100;
+		  registerFrame[0].U16 = 22881;
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -360,7 +367,7 @@ int main(void)
 		  if(position == qf){
 			  static int FinalTime = 0;
 			  FinalTime += 1;
-			  if(FinalTime >= 42000000){
+			  if(FinalTime >= 50000000){
 				  // End Effector
 				  scheduler = 4;
 			  }
@@ -1121,11 +1128,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 2150)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,400);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,300);
 		}
 		else if(XYSwitch[1] < 2000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,400);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,300);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -1319,7 +1326,7 @@ void JoystickLocationState()
 			sin_Theta = (PlaceTray.L2[1]-PlaceTray.L1[1])/60;
 
 			PlaceTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10)+PlaceTray.L1[0];
-			PlaceTray.hole_y[1] = (sin_Theta*10)+(cos_Theta*-10)+PlaceTray.L1[1];
+			PlaceTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10)+PlaceTray.L1[1];
 
 			PlaceTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*-10)+PlaceTray.L1[0];
 			PlaceTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*-10)+PlaceTray.L1[1];
