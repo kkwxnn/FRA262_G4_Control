@@ -21,8 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "math.h"
 #include "arm_math.h"
 #include "ModBusRTU.h"
+#include "stdio.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +50,7 @@ I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim11;
 
 UART_HandleTypeDef huart1;
@@ -116,7 +120,7 @@ float errorvelocity = 0;
 
 float setacc = 0;
 
-float Kp_p = 0.5;
+float Kp_p = 1;
 float Ki_p = 0;
 float Kd_p = 0;
 //float Kp_v = 0.5;
@@ -181,6 +185,8 @@ int Proximity = 0;
 ModbusHandleTypedef hmodbus;
 u16u8_t registerFrame[70];
 
+char TxBuffer[80] = "";
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -194,6 +200,7 @@ static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM11_Init(void);
+static void MX_TIM9_Init(void);
 /* USER CODE BEGIN PFP */
 void VelocityApprox();
 void AccelerationApprox();
@@ -248,6 +255,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   MX_TIM11_Init();
+  MX_TIM9_Init();
   /* USER CODE BEGIN 2 */
 
   hmodbus.huart = &huart2;
@@ -262,12 +270,14 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
+  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
+
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, L_EN);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, R_EN);
 
-
   HAL_ADC_Start_DMA(&hadc1, XYSwitch, 2);
 
+  registerFrame[1].U16 = 0;
   EndEffectorState = 0;	//SoftReset
   EndEffectorWriteFlag = 1;
 
@@ -279,10 +289,18 @@ int main(void)
   {
 	  Modbus_Protocal_Worker();
 	  static uint32_t heartbeat = 0;
+	  static uint32_t uart_time = 0;
 	  if(heartbeat < HAL_GetTick())
 	  {
 		  heartbeat = HAL_GetTick()+100;
 		  registerFrame[0].U16 = 22881;
+	  }
+
+	  if (huart1.gState == HAL_UART_STATE_READY && (HAL_GetTick() >= uart_time))
+	  {
+		  sprintf(TxBuffer,"%d\r\n",position);
+		  HAL_UART_Transmit_IT(&huart1, (uint8_t *)TxBuffer, strlen(TxBuffer));
+		  uart_time += 20;
 	  }
     /* USER CODE END WHILE */
 
@@ -291,7 +309,7 @@ int main(void)
 	  AccelerationApprox();
 	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
 
-  	  EndEffectorWrite(); //I2C
+//  	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
 	  switch(scheduler)
@@ -333,17 +351,17 @@ int main(void)
 		  static uint32_t timestamp0 = 0;
 		  if(HAL_GetTick() > timestamp0)
 		  {
-			  timestamp0 = HAL_GetTick() + 0.1;
+			  timestamp0 = HAL_GetTick() + 0.5;
 			  VelocityApprox();
 			  AccelerationApprox();
 		  }
 
-		  static uint32_t timestamp1 = 0;
-		  if(HAL_GetTick() > timestamp1)
-		  {
-			  timestamp1 = HAL_GetTick() + 0.5;
-			  TrajectoryGenerator();
-		  }
+//		  static uint32_t timestamp1 = 0;
+//		  if(HAL_GetTick() > timestamp1)
+//		  {
+//			  timestamp1 = HAL_GetTick() + 0.5;
+//			  TrajectoryGenerator();
+//		  }
 
 		  //PWM & Motor drive & PID
 		  static uint32_t timestamp2 = 0;
@@ -672,6 +690,44 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM9 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM9_Init(void)
+{
+
+  /* USER CODE BEGIN TIM9_Init 0 */
+
+  /* USER CODE END TIM9_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+
+  /* USER CODE BEGIN TIM9_Init 1 */
+
+  /* USER CODE END TIM9_Init 1 */
+  htim9.Instance = TIM9;
+  htim9.Init.Prescaler = 99;
+  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim9.Init.Period = 999;
+  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM9_Init 2 */
+
+  /* USER CODE END TIM9_Init 2 */
 
 }
 
@@ -1013,10 +1069,10 @@ void AccelerationApprox()
 void Routine()
 {
 	position_f = position;
-	Yactualposition = position_f*0.45;	//mm*10
-	registerFrame[17].U16 = Yactualposition;	//mm*10		//Y Actual Position
-	registerFrame[18].U16 = velocity*0.45; //mm/s*10		//Y Actual Speed
-	registerFrame[19].U16 = Accel*0.45; 	//mm/s^2*10		//Y Actual Acceleration
+	Yactualposition = position_f*0.45;			//mm*10
+	registerFrame[17].U16 = Yactualposition;	//mm*10			//Y Actual Position
+	registerFrame[18].U16 = velocity*0.45;		//mm/s*10		//Y Actual Speed
+	registerFrame[19].U16 = Accel*0.45; 		//mm/s^2*10		//Y Actual Acceleration
 }
 
 float PIDcal()
@@ -1125,12 +1181,12 @@ void JoystickControl()
 	//Rough
 	case 0:
 		//Y-Axis Control
-		if(XYSwitch[1] > 2150)
+		if(XYSwitch[1] > 2200)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,300);
 		}
-		else if(XYSwitch[1] < 2000)
+		else if(XYSwitch[1] < 1950)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,300);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
@@ -1141,11 +1197,11 @@ void JoystickControl()
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		//X-Axis Control
-		if(XYSwitch[0] > 2150)
+		if(XYSwitch[0] > 2200)
 		{
 			registerFrame[64].U16 = 4; //X Moving Status: Jog Left
 		}
-		else if(XYSwitch[0] < 2000)
+		else if(XYSwitch[0] < 1950)
 		{
 			registerFrame[64].U16 = 8; //X Moving Status: Jog Right
 		}
@@ -1157,12 +1213,12 @@ void JoystickControl()
 
 	//Fine
 	case 1:
-		if(XYSwitch[1] > 2150)
+		if(XYSwitch[1] > 2200)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,200);
 		}
-		else if(XYSwitch[1] < 2000)
+		else if(XYSwitch[1] < 1950)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,200);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
@@ -1173,11 +1229,11 @@ void JoystickControl()
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		//X-Axis Control
-		if(XYSwitch[0] > 2150)
+		if(XYSwitch[0] > 2200)
 		{
 			registerFrame[64].U16 = 4; //X Moving Status: Jog Left
 		}
-		else if(XYSwitch[0] < 2000)
+		else if(XYSwitch[0] < 1950)
 		{
 			registerFrame[64].U16 = 8; //X Moving Status: Jog Right
 		}
@@ -1353,7 +1409,7 @@ void JoystickLocationState()
 			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40)+PlaceTray.L1[1];
 
 			PlaceTray.origin_x = PlaceTray.L1[0]+(50*sin_Theta);
-			PlaceTray.origin_y = PlaceTray.origin_y * 10;
+			PlaceTray.origin_y = PlaceTray.L1[1]-(50*cos_Theta);
 			PlaceTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
 			registerFrame[35].U16 = PlaceTray.origin_x * 10;
@@ -1390,6 +1446,18 @@ void JoystickLocationState()
 	}
 }
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim == &htim9) //check call back from timer9
+	{
+		if(scheduler == 3)
+		{
+			TrajectoryGenerator();
+		}
+
+	}
+}
+
 void TrajectoryGenerator()
 {
 	switch(Trajectstate)
@@ -1397,16 +1465,16 @@ void TrajectoryGenerator()
 	case 0: //initial Condition & Case Check
 		qi = position;
 		qdi = 0;
-		qd_max = 13333.33; //pDulse/s
-		qdd_max = 11111.11; //pulse/s
+		qd_max = 13333.33; //pulse/s
+		qdd_max = 11111.11; //pulse/s^2
 
 	  if(qf > qi)
 	  {
-		  t_half = sqrt((qf-qi)/qdd_max);
+		  t_half = sqrtf((qf-qi)/qdd_max);
 	  }
 	  else if(qf < qi)
 	  {
-		  t_half = sqrt(-1*(qf-qi)/qdd_max);
+		  t_half = sqrtf(-1*(qf-qi)/qdd_max);
 	  }
 
 	  if(qf-qi < 0)
@@ -1421,7 +1489,7 @@ void TrajectoryGenerator()
 	  tconst = ((qf-qi)-qacc-qdec)/qd_max;
 	  tdec = tacc;
 
-	  if(qdi+qdd_max*t_half >= qd_max)
+	  if(fabs(qdi+qdd_max*t_half) >= fabs(qd_max))
 	  {
 		  initime = time;
 		  Trajectstate = 2;

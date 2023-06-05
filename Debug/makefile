@@ -61,7 +61,7 @@ main-build: FRA262_G4_Control.elf secondary-outputs
 
 # Tool invocations
 FRA262_G4_Control.elf FRA262_G4_Control.map: $(OBJS) $(USER_OBJS) C:\Users\kwan2\Documents\2-2\ FIBO\FRA262\ Studio\Control\FRA262_G4_Control\STM32F411RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "FRA262_G4_Control.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\kwan2\Documents\2-2 FIBO\FRA262 Studio\Control\FRA262_G4_Control\STM32F411RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="FRA262_G4_Control.map" -Wl,--gc-sections -static -L../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Lib/GCC --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "FRA262_G4_Control.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\kwan2\Documents\2-2 FIBO\FRA262 Studio\Control\FRA262_G4_Control\STM32F411RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="FRA262_G4_Control.map" -Wl,--gc-sections -static -L../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Lib/GCC --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
