@@ -27,23 +27,23 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  00030400  2**0
                   CONTENTS, READONLY
- 12 .debug_info   0001558a  00000000  00000000  00030430  2**0
+ 12 .debug_info   0001555f  00000000  00000000  00030430  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 00002740  00000000  00000000  000459ba  2**0
+ 13 .debug_abbrev 00002740  00000000  00000000  0004598f  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_aranges 00001208  00000000  00000000  00048100  2**3
+ 14 .debug_aranges 00001208  00000000  00000000  000480d0  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_ranges 00001138  00000000  00000000  00049308  2**3
+ 15 .debug_ranges 00001138  00000000  00000000  000492d8  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  000192eb  00000000  00000000  0004a440  2**0
+ 16 .debug_macro  000192eb  00000000  00000000  0004a410  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   000159b3  00000000  00000000  0006372b  2**0
+ 17 .debug_line   000159bd  00000000  00000000  000636fb  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000a0212  00000000  00000000  000790de  2**0
+ 18 .debug_str    000a0212  00000000  00000000  000790b8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000050  00000000  00000000  001192f0  2**0
+ 19 .comment      00000050  00000000  00000000  001192ca  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00006414  00000000  00000000  00119340  2**2
+ 20 .debug_frame  00006414  00000000  00000000  0011931c  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2940,14 +2940,14 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 20 && position <= qf + 20 && registerFrame[64].U16 == 0) //4
+		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0)
  8001a94:	4b49      	ldr	r3, [pc, #292]	; (8001bbc <main+0x504>)
  8001a96:	f9b3 3000 	ldrsh.w	r3, [r3]
  8001a9a:	ee07 3a90 	vmov	s15, r3
  8001a9e:	eeb8 7ae7 	vcvt.f32.s32	s14, s15
  8001aa2:	4b4b      	ldr	r3, [pc, #300]	; (8001bd0 <main+0x518>)
  8001aa4:	edd3 7a00 	vldr	s15, [r3]
- 8001aa8:	eef3 6a04 	vmov.f32	s13, #52	; 0x41a00000  20.0
+ 8001aa8:	eef1 6a00 	vmov.f32	s13, #16	; 0x40800000  4.0
  8001aac:	ee77 7ae6 	vsub.f32	s15, s15, s13
  8001ab0:	eeb4 7ae7 	vcmpe.f32	s14, s15
  8001ab4:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
@@ -2958,7 +2958,7 @@ int main(void)
  8001ac4:	eeb8 7ae7 	vcvt.f32.s32	s14, s15
  8001ac8:	4b41      	ldr	r3, [pc, #260]	; (8001bd0 <main+0x518>)
  8001aca:	edd3 7a00 	vldr	s15, [r3]
- 8001ace:	eef3 6a04 	vmov.f32	s13, #52	; 0x41a00000  20.0
+ 8001ace:	eef1 6a00 	vmov.f32	s13, #16	; 0x40800000  4.0
  8001ad2:	ee77 7aa6 	vadd.f32	s15, s15, s13
  8001ad6:	eeb4 7ae7 	vcmpe.f32	s14, s15
  8001ada:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
@@ -3010,84 +3010,87 @@ int main(void)
 
 	  //Proximity
 	  case 4 :
-		  if (HoleSequence == 9)
+		  if (HoleSequence < 9)
  8001b1c:	4b31      	ldr	r3, [pc, #196]	; (8001be4 <main+0x52c>)
  8001b1e:	681b      	ldr	r3, [r3, #0]
- 8001b20:	2b09      	cmp	r3, #9
- 8001b22:	d103      	bne.n	8001b2c <main+0x474>
-		  {
-			  scheduler = 0;
- 8001b24:	4b2d      	ldr	r3, [pc, #180]	; (8001bdc <main+0x524>)
- 8001b26:	2200      	movs	r2, #0
- 8001b28:	601a      	str	r2, [r3, #0]
- 8001b2a:	e033      	b.n	8001b94 <main+0x4dc>
-		  }
-		  else if (HoleSequence < 9)
- 8001b2c:	4b2d      	ldr	r3, [pc, #180]	; (8001be4 <main+0x52c>)
- 8001b2e:	681b      	ldr	r3, [r3, #0]
- 8001b30:	2b08      	cmp	r3, #8
- 8001b32:	dc2f      	bgt.n	8001b94 <main+0x4dc>
+ 8001b20:	2b08      	cmp	r3, #8
+ 8001b22:	dc37      	bgt.n	8001b94 <main+0x4dc>
 		  {
 			  if (TaskType == 1)
- 8001b34:	4b2c      	ldr	r3, [pc, #176]	; (8001be8 <main+0x530>)
- 8001b36:	681b      	ldr	r3, [r3, #0]
- 8001b38:	2b01      	cmp	r3, #1
- 8001b3a:	d111      	bne.n	8001b60 <main+0x4a8>
+ 8001b24:	4b30      	ldr	r3, [pc, #192]	; (8001be8 <main+0x530>)
+ 8001b26:	681b      	ldr	r3, [r3, #0]
+ 8001b28:	2b01      	cmp	r3, #1
+ 8001b2a:	d111      	bne.n	8001b50 <main+0x498>
 			  {
 				  EndEffectorState = 4;			//Pick
- 8001b3c:	4b2b      	ldr	r3, [pc, #172]	; (8001bec <main+0x534>)
- 8001b3e:	2204      	movs	r2, #4
- 8001b40:	601a      	str	r2, [r3, #0]
+ 8001b2c:	4b2f      	ldr	r3, [pc, #188]	; (8001bec <main+0x534>)
+ 8001b2e:	2204      	movs	r2, #4
+ 8001b30:	601a      	str	r2, [r3, #0]
 				  EndEffectorWriteFlag = 1;
- 8001b42:	4b2b      	ldr	r3, [pc, #172]	; (8001bf0 <main+0x538>)
- 8001b44:	2201      	movs	r2, #1
- 8001b46:	701a      	strb	r2, [r3, #0]
+ 8001b32:	4b2f      	ldr	r3, [pc, #188]	; (8001bf0 <main+0x538>)
+ 8001b34:	2201      	movs	r2, #1
+ 8001b36:	701a      	strb	r2, [r3, #0]
 //				  EndEffectorWrite();
 				  TaskType = -1; ////// TestYesterday
- 8001b48:	4b27      	ldr	r3, [pc, #156]	; (8001be8 <main+0x530>)
- 8001b4a:	f04f 32ff 	mov.w	r2, #4294967295
- 8001b4e:	601a      	str	r2, [r3, #0]
+ 8001b38:	4b2b      	ldr	r3, [pc, #172]	; (8001be8 <main+0x530>)
+ 8001b3a:	f04f 32ff 	mov.w	r2, #4294967295
+ 8001b3e:	601a      	str	r2, [r3, #0]
 				  HAL_Delay(2000); ////// TestYesterday
- 8001b50:	f44f 60fa 	mov.w	r0, #2000	; 0x7d0
- 8001b54:	f002 ff02 	bl	800495c <HAL_Delay>
+ 8001b40:	f44f 60fa 	mov.w	r0, #2000	; 0x7d0
+ 8001b44:	f002 ff0a 	bl	800495c <HAL_Delay>
 				  scheduler = 2; ////// TestYesterday
- 8001b58:	4b20      	ldr	r3, [pc, #128]	; (8001bdc <main+0x524>)
- 8001b5a:	2202      	movs	r2, #2
- 8001b5c:	601a      	str	r2, [r3, #0]
- 8001b5e:	e019      	b.n	8001b94 <main+0x4dc>
+ 8001b48:	4b24      	ldr	r3, [pc, #144]	; (8001bdc <main+0x524>)
+ 8001b4a:	2202      	movs	r2, #2
+ 8001b4c:	601a      	str	r2, [r3, #0]
+ 8001b4e:	e021      	b.n	8001b94 <main+0x4dc>
 			  }
 			  else if (TaskType == -1)
- 8001b60:	4b21      	ldr	r3, [pc, #132]	; (8001be8 <main+0x530>)
- 8001b62:	681b      	ldr	r3, [r3, #0]
- 8001b64:	f1b3 3fff 	cmp.w	r3, #4294967295
- 8001b68:	d114      	bne.n	8001b94 <main+0x4dc>
+ 8001b50:	4b25      	ldr	r3, [pc, #148]	; (8001be8 <main+0x530>)
+ 8001b52:	681b      	ldr	r3, [r3, #0]
+ 8001b54:	f1b3 3fff 	cmp.w	r3, #4294967295
+ 8001b58:	d11c      	bne.n	8001b94 <main+0x4dc>
 			  {
 				  EndEffectorState = 5;			//Place
- 8001b6a:	4b20      	ldr	r3, [pc, #128]	; (8001bec <main+0x534>)
- 8001b6c:	2205      	movs	r2, #5
- 8001b6e:	601a      	str	r2, [r3, #0]
+ 8001b5a:	4b24      	ldr	r3, [pc, #144]	; (8001bec <main+0x534>)
+ 8001b5c:	2205      	movs	r2, #5
+ 8001b5e:	601a      	str	r2, [r3, #0]
 				  EndEffectorWriteFlag = 1;
- 8001b70:	4b1f      	ldr	r3, [pc, #124]	; (8001bf0 <main+0x538>)
- 8001b72:	2201      	movs	r2, #1
- 8001b74:	701a      	strb	r2, [r3, #0]
+ 8001b60:	4b23      	ldr	r3, [pc, #140]	; (8001bf0 <main+0x538>)
+ 8001b62:	2201      	movs	r2, #1
+ 8001b64:	701a      	strb	r2, [r3, #0]
 //				  EndEffectorWrite();
 				  TaskType = 1; ////// TestYesterday
- 8001b76:	4b1c      	ldr	r3, [pc, #112]	; (8001be8 <main+0x530>)
- 8001b78:	2201      	movs	r2, #1
- 8001b7a:	601a      	str	r2, [r3, #0]
+ 8001b66:	4b20      	ldr	r3, [pc, #128]	; (8001be8 <main+0x530>)
+ 8001b68:	2201      	movs	r2, #1
+ 8001b6a:	601a      	str	r2, [r3, #0]
 				  HoleSequence += 1; ////// TestYesterday
- 8001b7c:	4b19      	ldr	r3, [pc, #100]	; (8001be4 <main+0x52c>)
- 8001b7e:	681b      	ldr	r3, [r3, #0]
- 8001b80:	3301      	adds	r3, #1
- 8001b82:	4a18      	ldr	r2, [pc, #96]	; (8001be4 <main+0x52c>)
- 8001b84:	6013      	str	r3, [r2, #0]
+ 8001b6c:	4b1d      	ldr	r3, [pc, #116]	; (8001be4 <main+0x52c>)
+ 8001b6e:	681b      	ldr	r3, [r3, #0]
+ 8001b70:	3301      	adds	r3, #1
+ 8001b72:	4a1c      	ldr	r2, [pc, #112]	; (8001be4 <main+0x52c>)
+ 8001b74:	6013      	str	r3, [r2, #0]
 				  HAL_Delay(2000); ////// TestYesterday
- 8001b86:	f44f 60fa 	mov.w	r0, #2000	; 0x7d0
- 8001b8a:	f002 fee7 	bl	800495c <HAL_Delay>
-				  scheduler = 1; ////// TestYesterday
+ 8001b76:	f44f 60fa 	mov.w	r0, #2000	; 0x7d0
+ 8001b7a:	f002 feef 	bl	800495c <HAL_Delay>
+				  if (HoleSequence == 9)
+ 8001b7e:	4b19      	ldr	r3, [pc, #100]	; (8001be4 <main+0x52c>)
+ 8001b80:	681b      	ldr	r3, [r3, #0]
+ 8001b82:	2b09      	cmp	r3, #9
+ 8001b84:	d103      	bne.n	8001b8e <main+0x4d6>
+				  {
+					  scheduler = 0; //////TestYesterday
+ 8001b86:	4b15      	ldr	r3, [pc, #84]	; (8001bdc <main+0x524>)
+ 8001b88:	2200      	movs	r2, #0
+ 8001b8a:	601a      	str	r2, [r3, #0]
+ 8001b8c:	e002      	b.n	8001b94 <main+0x4dc>
+				  }
+				  else
+				  {
+					  scheduler = 1; //////TestYesterday
  8001b8e:	4b13      	ldr	r3, [pc, #76]	; (8001bdc <main+0x524>)
  8001b90:	2201      	movs	r2, #1
  8001b92:	601a      	str	r2, [r3, #0]
+				  }
 			  }
 		  }
 		  if (ResetButton.flag == 1)

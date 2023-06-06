@@ -383,7 +383,7 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 20 && position <= qf + 20 && registerFrame[64].U16 == 0) //4
+		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0)
 		  {
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
@@ -402,11 +402,7 @@ int main(void)
 
 	  //Proximity
 	  case 4 :
-		  if (HoleSequence == 9)
-		  {
-			  scheduler = 0;
-		  }
-		  else if (HoleSequence < 9)
+		  if (HoleSequence < 9)
 		  {
 			  if (TaskType == 1)
 			  {
@@ -425,7 +421,14 @@ int main(void)
 				  TaskType = 1; ////// TestYesterday
 				  HoleSequence += 1; ////// TestYesterday
 				  HAL_Delay(2000); ////// TestYesterday
-				  scheduler = 1; ////// TestYesterday
+				  if (HoleSequence == 9)
+				  {
+					  scheduler = 0; //////TestYesterday
+				  }
+				  else
+				  {
+					  scheduler = 1; //////TestYesterday
+				  }
 			  }
 		  }
 		  if (ResetButton.flag == 1)
@@ -970,7 +973,7 @@ void Homing()
 
 void EndEffectorWrite()
 {
-	HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, 100);
+	HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 	switch(EndEffectorState)
 	{
 	case 0:
@@ -1040,7 +1043,14 @@ void EndEffectorWrite()
 					registerFrame[2].U16 = 2; //End Effector Status: Gripper Power
 					TaskType *= -1;
 					HoleSequence += 1;
-					scheduler = 1;
+					if (HoleSequence == 9)
+					{
+						scheduler = 0;
+					}
+					else
+					{
+						scheduler = 1;
+					}
 				}
 			}
 		break;
