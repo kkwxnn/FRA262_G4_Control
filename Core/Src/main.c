@@ -46,6 +46,8 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim9;
@@ -198,6 +200,7 @@ static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM11_Init(void);
 static void MX_TIM9_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 void VelocityApprox();
 void AccelerationApprox();
@@ -252,6 +255,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM11_Init();
   MX_TIM9_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   hmodbus.huart = &huart2;
@@ -294,7 +298,7 @@ int main(void)
 
 	  if (huart1.gState == HAL_UART_STATE_READY && (HAL_GetTick() >= uart_time))
 	  {
-		  sprintf(TxBuffer,"%d %.2f\r\n",position, setposition);
+		  sprintf(TxBuffer,"%d %.2f %.2f\r\n",position, setposition, setvelocity);
 		  HAL_UART_Transmit_IT(&huart1, (uint8_t *)TxBuffer, strlen(TxBuffer));
 		  uart_time += 20;
 	  }
@@ -305,7 +309,6 @@ int main(void)
 	  AccelerationApprox();
 	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
 
-//	  EndEffectorWrite(); //I2C
 	  JoystickPinUpdate(); //Check Pin Flag
 
 	  switch(scheduler)
@@ -325,6 +328,7 @@ int main(void)
 		  registerFrame[65].U16 = PickTray.hole_x[HoleSequence]*10; //X-Axis Target Position Pick Tray
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 3;
+		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
 		  scheduler = 3;
 		  break;
@@ -336,6 +340,7 @@ int main(void)
 		  registerFrame[65].U16 = PlaceTray.hole_x[HoleSequence]*10; //X-Axis Target Position Place Tray
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 3;
+		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
 		  scheduler = 3;
 		  break;
@@ -378,9 +383,11 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 4 && position <= qf + 4){
+		  if(position >= qf - 20 && position <= qf + 20 && registerFrame[64].U16 == 0) //4
+		  {
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+			  Trajectstate = 3;
 			  // End Effector
 			  scheduler = 4;
 		  }
@@ -405,6 +412,7 @@ int main(void)
 			  {
 				  EndEffectorState = 4;			//Pick
 				  EndEffectorWriteFlag = 1;
+//				  EndEffectorWrite();
 				  TaskType = -1; ////// TestYesterday
 				  HAL_Delay(2000); ////// TestYesterday
 				  scheduler = 2; ////// TestYesterday
@@ -413,6 +421,7 @@ int main(void)
 			  {
 				  EndEffectorState = 5;			//Place
 				  EndEffectorWriteFlag = 1;
+//				  EndEffectorWrite();
 				  TaskType = 1; ////// TestYesterday
 				  HoleSequence += 1; ////// TestYesterday
 				  HAL_Delay(2000); ////// TestYesterday
@@ -540,6 +549,40 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -852,6 +895,18 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin : PC1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PC2 PC3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PA5 PA10 */
   GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -892,14 +947,14 @@ void Homing()
 {
 	if (Proximity == 1)
 	{
-//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
 	else if (Proximity == 2)
 	{
-//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-//		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
 	//Proximity Home
@@ -913,111 +968,114 @@ void Homing()
 	}
 }
 
-//void EndEffectorWrite()
-//{
-//	static uint32_t Readstamp = 0;
-//	if(HAL_GetTick() >= Readstamp)
-//	{
-//		Readstamp = HAL_GetTick() + 10;
-//		HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//	}
-//	switch(EndEffectorState)
-//	{
-//	case 0:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, SoftReset, 4, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 1:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOn, 2, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 2:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOff, 2, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 3:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOn, 2, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 4:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PickData, 2, HAL_MAX_DELAY);
-//				registerFrame[2].U16 = 6; //End Effector Status: Piking
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//				if(EndEffectorDataReadBack[0] == 0b111)	//Picked
-//				{
-//					TaskType *= -1;
-//				}
-//			}
-//		break;
-//	case 5:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PlaceData, 2, HAL_MAX_DELAY);
-//				registerFrame[2].U16 = 10; //End Effector Status: Placing
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//				if(EndEffectorDataReadBack[0] == 0b100)	//Placed
-//				{
-//					registerFrame[2].U16 = 2; //End Effector Status: Gripper Power
-//					TaskType *= -1;
-//					HoleSequence += 1;
-//				}
-//			}
-//		break;
-//	case 6:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOff, 2, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 7:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, Emergency, 1, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	case 8:
-//		if(EndEffectorWriteFlag == 1)
-//			{
-//				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, QuitEmergency, 4, HAL_MAX_DELAY);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, HAL_MAX_DELAY);
-//				EndEffectorWriteFlag = 0;
-//			}
-//		break;
-//	}
-//}
+void EndEffectorWrite()
+{
+	HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, 100);
+	switch(EndEffectorState)
+	{
+	case 0:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, SoftReset, 4, 100);
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 1:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOn, 2, 100);
+				registerFrame[2].U16 = 1; //End Effector Status: Laser On
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 2:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOff, 2, 100);
+				registerFrame[2].U16 = 0; //End Effector Status: Laser Off
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 3:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOn, 2, 100);
+				registerFrame[2].U16 = 2; //End Effector Status: Gripper Power
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 4:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PickData, 2, 100);
+				registerFrame[2].U16 = 6; //End Effector Status: Piking
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+				if(EndEffectorDataReadBack[0] == 0b111)	//Picked
+				{
+					TaskType *= -1;
+					scheduler = 2;
+				}
+			}
+		break;
+	case 5:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PlaceData, 2, 100);
+				registerFrame[2].U16 = 10; //End Effector Status: Placing
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+				if(EndEffectorDataReadBack[0] == 0b100)	//Placed
+				{
+					registerFrame[2].U16 = 2; //End Effector Status: Gripper Power
+					TaskType *= -1;
+					HoleSequence += 1;
+					scheduler = 1;
+				}
+			}
+		break;
+	case 6:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOff, 2, 100);
+				registerFrame[2].U16 = 0; //End Effector Status: Off
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 7:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, Emergency, 1, 100);
+				registerFrame[2].U16 = 0; //End Effector Status: Off
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	case 8:
+		if(EndEffectorWriteFlag == 1)
+			{
+				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, QuitEmergency, 4, 100);
+				registerFrame[2].U16 = 0; //End Effector Status: Off
+				HAL_Delay(5);
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				EndEffectorWriteFlag = 0;
+			}
+		break;
+	}
+}
 
 void VelocityApprox()
 {
@@ -1422,102 +1480,105 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		{
 			TrajectoryGenerator();
 		}
-
 	}
 }
+
 
 void TrajectoryGenerator()
 {
 	switch(Trajectstate)
 	{
 	case 0: //initial Condition & Case Check
-		qi = position;
-		qdi = 0;
-		qd_max = 13333.33; //pulse/s
-		qdd_max = 11111.11; //pulse/s^2
+			qi = position;
+			qdi = 0;
+			qd_max = 22222.22;  //1000 pulse/s
+			qdd_max = 66666.67; //3000 pulse/s^2
 
-	  if(qf > qi)
-	  {
-		  t_half = sqrtf((qf-qi)/qdd_max);
-	  }
-	  else if(qf < qi)
-	  {
-		  t_half = sqrtf(-1*(qf-qi)/qdd_max);
-	  }
+		  if(qf > qi)
+		  {
+			  t_half = sqrtf((qf-qi)/qdd_max);
+		  }
+		  else if(qf < qi)
+		  {
+			  t_half = sqrtf(-1*(qf-qi)/qdd_max);
+		  }
 
-	  if(qf-qi < 0)
-	  {
-		  qd_max = -1*qd_max;
-		  qdd_max = -1*qdd_max;
-	  }
+		  if(qf-qi < 0)
+		  {
+			  qd_max = -1*qd_max;
+			  qdd_max = -1*qdd_max;
+		  }
 
-	  tacc = (qd_max-qdi)/qdd_max;
-	  qacc = qdi*tacc + 0.5*qdd_max*tacc*tacc;
-	  qdec = qacc;
-	  tconst = ((qf-qi)-qacc-qdec)/qd_max;
-	  tdec = tacc;
+		  tacc = (qd_max-qdi)/qdd_max;
+		  qacc = qdi*tacc + 0.5*qdd_max*tacc*tacc;
+		  qdec = qacc;
+		  tconst = ((qf-qi)-qacc-qdec)/qd_max;
+		  tdec = tacc;
 
-	  if(fabs(qdi+qdd_max*t_half) >= fabs(qd_max))
-	  {
-		  initime = time;
-		  Trajectstate = 2;
-	  }
-	  else
-	  {
-		  initime = time;
-		  Trajectstate = 1;
-	  }
-	  break;
+		  if(fabs(qdi+qdd_max*t_half) >= fabs(qd_max))
+		  {
+			  initime = time;
+			  Trajectstate = 2;
+		  }
+		  else
+		  {
+			  initime = time;
+			  Trajectstate = 1;
+		  }
+		  break;
 
 	case 1:
-	  if(time <= t_half + initime)
-	  {
-		  setacc = qdd_max;
-		  setvelocity = qdi + setacc*(time-initime);
-		  setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
+		  if(time <= t_half + initime)
+		  {
+			  setacc = qdd_max;
+			  setvelocity = qdi + setacc*(time-initime);
+			  setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
 
-		  qi_1 = setposition;
-		  qdi_1 = setvelocity;
-		  time += 0.001;
-	  }
-	  else if(t_half + initime < time && time <= (2*t_half) + initime)
-	  {
-		  setacc = -qdd_max;
-		  setvelocity = qdi_1 + setacc*(time-initime-t_half);
-		  setposition = qi_1 + qdi_1*(time-initime-t_half)+0.5*setacc*(time-initime-t_half)*(time-initime-t_half);
-		  time += 0.001;
-	  }
-	break;
+			  qi_1 = setposition;
+			  qdi_1 = setvelocity;
+			  time += 0.001;
+		  }
+		  else if(t_half + initime < time && time <= (2*t_half) + initime)
+		  {
+			  setacc = -qdd_max;
+			  setvelocity = qdi_1 + setacc*(time-initime-t_half);
+			  setposition = qi_1 + qdi_1*(time-initime-t_half)+0.5*setacc*(time-initime-t_half)*(time-initime-t_half);
+			  time += 0.001;
+		  }
+		break;
 
 	case 2:
-	 if(time <= tacc + initime)
-	 {
-		 setacc = qdd_max;
-		 setvelocity = qdi + setacc*(time-initime);
-		 setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
+		 if(time <= tacc + initime)
+		 {
+			 setacc = qdd_max;
+			 setvelocity = qdi + setacc*(time-initime);
+			 setposition = qi + qdi*(time-initime)+0.5*setacc*(time-initime)*(time-initime);
 
-		 qi_1 = setposition;
-		 qdi_1 = setvelocity;
-		 time += 0.001;
-	 }
-	 else if(tacc+initime < time && time <= initime+tacc+tconst)
-	 {
-		 setacc = 0;
-		 setvelocity = qd_max;
-		 setposition = qi_1 + qd_max*(time-initime-tacc);
+			 qi_1 = setposition;
+			 qdi_1 = setvelocity;
+			 time += 0.001;
+		 }
+		 else if(tacc+initime < time && time <= initime+tacc+tconst)
+		 {
+			 setacc = 0;
+			 setvelocity = qd_max;
+			 setposition = qi_1 + qd_max*(time-initime-tacc);
 
-		 qi_2 = setposition;
-		 qdi_2 = setvelocity;
-		 time += 0.001;
-	 }
-	 else if(tacc+tconst+initime < time && time <= tacc+tconst+tdec+initime)
-	 {
-		 setacc = -qdd_max;
-		 setvelocity = qdi_2 + setacc*(time-initime-tacc-tconst);
-		 setposition = qi_2 + qdi_2*(time-initime-tacc-tconst)+0.5*setacc*(time-initime-tacc-tconst)*(time-initime-tacc-tconst);
-		 time += 0.001;
-	 }
-	 break;
+			 qi_2 = setposition;
+			 qdi_2 = setvelocity;
+			 time += 0.001;
+		 }
+		 else if(tacc+tconst+initime < time && time <= tacc+tconst+tdec+initime)
+		 {
+			 setacc = -qdd_max;
+			 setvelocity = qdi_2 + setacc*(time-initime-tacc-tconst);
+			 setposition = qi_2 + qdi_2*(time-initime-tacc-tconst)+0.5*setacc*(time-initime-tacc-tconst)*(time-initime-tacc-tconst);
+			 time += 0.001;
+		 }
+		 break;
+	case 3: // wait state
+		setposition = position;
+		break;
 	}
 }
 /* USER CODE END 4 */
