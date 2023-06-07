@@ -50,7 +50,6 @@ I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim11;
 
@@ -206,7 +205,6 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM11_Init(void);
 static void MX_TIM9_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 void VelocityApprox();
 void AccelerationApprox();
@@ -262,7 +260,6 @@ int main(void)
   MX_TIM11_Init();
   MX_TIM9_Init();
   MX_I2C1_Init();
-  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
   hmodbus.huart = &huart2;
@@ -278,7 +275,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
   HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
-  HAL_TIM_Base_Start_IT(&htim4); //Start IT Timer4
+//  HAL_TIM_Base_Start_IT(&htim4); //Start IT Timer4
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, L_EN);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, R_EN);
@@ -720,51 +717,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM4_Init(void)
-{
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 99;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
   * @brief TIM9 Initialization Function
   * @param None
   * @retval None
@@ -1044,8 +996,6 @@ void EndEffectorWrite()
 		if(EndEffectorWriteFlag == 1)
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, SoftReset, 4, 100);
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1054,8 +1004,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOn, 2, 100);
 				registerFrame[2].U16 = 1; //End Effector Status: Laser On
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1064,8 +1012,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, TestModeOff, 2, 100);
 				registerFrame[2].U16 = 0; //End Effector Status: Laser Off
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1074,8 +1020,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOn, 2, 100);
 				registerFrame[2].U16 = 2; //End Effector Status: Gripper Power
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1084,10 +1028,13 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PickData, 2, 100);
 				registerFrame[2].U16 = 6; //End Effector Status: Piking
-				HAL_Delay(10);
+				HAL_Delay(100);
 				EndEffectorReadFlag = 1;
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
+			}
+		else if(EndEffectorReadFlag == 1 && hi2c1.State == HAL_I2C_STATE_READY)
+			{
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 			}
 		if(EndEffectorDataReadBack[0] == 0x07)	//Picked
 			{
@@ -1101,10 +1048,13 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, PlaceData, 2, 100);
 				registerFrame[2].U16 = 10; //End Effector Status: Placing
-				HAL_Delay(10);
+				HAL_Delay(100);
 				EndEffectorReadFlag = 1;
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
+			}
+		else if(EndEffectorReadFlag == 1 && hi2c1.State == HAL_I2C_STATE_READY)
+			{
+				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 			}
 		if(EndEffectorDataReadBack[0] == 0x04)	//Placed
 			{
@@ -1127,8 +1077,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, RunModeOff, 2, 100);
 				registerFrame[2].U16 = 0; //End Effector Status: Off
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1137,8 +1085,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, Emergency, 1, 100);
 				registerFrame[2].U16 = 0; //End Effector Status: Off
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1147,8 +1093,6 @@ void EndEffectorWrite()
 			{
 				HAL_I2C_Master_Transmit(&hi2c1, 0x15 << 1, QuitEmergency, 4, 100);
 				registerFrame[2].U16 = 0; //End Effector Status: Off
-//				HAL_Delay(5);
-//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 				EndEffectorWriteFlag = 0;
 			}
 		break;
@@ -1381,10 +1325,10 @@ void JoystickLocationState()
 	{
 		registerFrame[1].U16 = 0;
 		registerFrame[16].U16 = 2;	//Y Moving Status: Jog Place
-		EndEffectorState = 1;		//TestModeOn
+//		EndEffectorState = 1;		//TestModeOn
 		registerFrame[2].U16 = 1;	//Laser On
-		EndEffectorWriteFlag = 1;
-		EndEffectorWrite();
+//		EndEffectorWriteFlag = 1;
+//		EndEffectorWrite();
 		state = 3;					//Go Place state
 	}
 	if(registerFrame[1].U16 == 8)	//Run Tray Mode
@@ -1545,7 +1489,7 @@ void JoystickLocationState()
 		EndEffectorWriteFlag = 1;
 		EndEffectorWrite();
 
-		HAL_Delay(10);
+		HAL_Delay(100);
 
 		EndEffectorState = 3;		//RunModeOn
 		registerFrame[2].U16 = 2;	//End Effector Status: Gripper Power
@@ -1572,12 +1516,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			TrajectoryGenerator();
 		}
 	}
-	if(htim == &htim4){
-		if(scheduler == 4 && EndEffectorReadFlag == 1)
-		{
-			HAL_I2C_Master_Receive(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1, 50);
-		}
-	}
+//	if(htim == &htim4){
+//		if(scheduler == 4 && EndEffectorReadFlag == 1)
+//		{
+//			if (hi2c1.State == HAL_I2C_STATE_READY) {
+//				HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+//			}
+//		}
+//	}
 }
 
 void TrajectoryGenerator()
