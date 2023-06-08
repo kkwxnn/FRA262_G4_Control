@@ -274,7 +274,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
-  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
+//  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 //  HAL_TIM_Base_Start_IT(&htim4); //Start IT Timer4
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, L_EN);
@@ -340,6 +340,7 @@ int main(void)
 		  registerFrame[67].U16 = 3;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
+		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 		  scheduler = 3;
 		  break;
 
@@ -352,6 +353,7 @@ int main(void)
 		  registerFrame[67].U16 = 3;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
+		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 		  scheduler = 3;
 		  break;
 
@@ -400,6 +402,7 @@ int main(void)
 			  Trajectstate = 3;
 			  // End Effector
 			  EndEffectorWriteFlag = 1;
+			  HAL_TIM_Base_Stop_IT(&htim9); //Stop IT Timer9
 			  scheduler = 4;
 		  }
 
@@ -1347,7 +1350,14 @@ void JoystickLocationState()
 		PickTray.L2[1] = 0;
 		if (GetPositionButton.flag == 1)
 		{
-			PickTray.L1[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+			if(registerFrame[68].U16 >= 30000)
+			{
+				PickTray.L1[0] = (registerFrame[68].U16-65536)/10;
+			}
+			else
+			{
+				PickTray.L1[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+			}
 			PickTray.L1[1] = position*0.045; //Pick Tray Y Position 1 //mm
 			GetPositionButton.flag = 0;
 			state = 2;
@@ -1358,12 +1368,19 @@ void JoystickLocationState()
 	case 2:
 		if (GetPositionButton.flag == 1)
 		{
-			PickTray.L2[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 2 //mm
+			if(registerFrame[68].U16 >= 30000)
+			{
+				PickTray.L2[0] = (registerFrame[68].U16-65536)/10;
+			}
+			else
+			{
+				PickTray.L2[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+			}
 			PickTray.L2[1] = position*0.045; //Pick Tray Y Position 2 //mm
 			GetPositionButton.flag = 0;
 
-			cos_Theta = (PickTray.L2[0]-PickTray.L1[0])/60;
-			sin_Theta = (PickTray.L2[1]-PickTray.L1[1])/60;
+			cos_Theta = (PickTray.L2[0]-PickTray.L1[0])/sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1])));
+			sin_Theta = (PickTray.L2[1]-PickTray.L1[1])/sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1])));
 
 			PickTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10)+PickTray.L1[0];
 			PickTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10)+PickTray.L1[1];
@@ -1417,7 +1434,14 @@ void JoystickLocationState()
 		PlaceTray.L2[1] = 0;
 		if (GetPositionButton.flag == 1)
 		{
-			PlaceTray.L1[0] = (registerFrame[68].U16)/10; //Place Tray X Position 1 //mm
+			if(registerFrame[68].U16 >= 30000)
+			{
+				PlaceTray.L1[0] = (registerFrame[68].U16-65536)/10;
+			}
+			else
+			{
+				PlaceTray.L1[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+			}
 			PlaceTray.L1[1] = position*0.045; //Place Tray Y Position 1 //mm
 			GetPositionButton.flag = 0;
 			state = 4;
@@ -1433,12 +1457,19 @@ void JoystickLocationState()
 	case 4:
 		if (GetPositionButton.flag == 1)
 		{
-			PlaceTray.L2[0] = (registerFrame[68].U16)/10; //Place Tray X Position 2 //mm
+			if(registerFrame[68].U16 >= 30000)
+			{
+				PlaceTray.L2[0] = (registerFrame[68].U16-65536)/10;
+			}
+			else
+			{
+				PlaceTray.L2[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+			}
 			PlaceTray.L2[1] = position*0.045; //Place Tray Y Position 2 //mm
 			GetPositionButton.flag = 0;
 
-			cos_Theta = (PlaceTray.L2[0]-PlaceTray.L1[0])/60;
-			sin_Theta = (PlaceTray.L2[1]-PlaceTray.L1[1])/60;
+			cos_Theta = (PlaceTray.L2[0]-PlaceTray.L1[0])/sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1])));
+			sin_Theta = (PlaceTray.L2[1]-PlaceTray.L1[1])/sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1])));
 
 			PlaceTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10)+PlaceTray.L1[0];
 			PlaceTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10)+PlaceTray.L1[1];
@@ -1495,6 +1526,8 @@ void JoystickLocationState()
 		registerFrame[2].U16 = 2;	//End Effector Status: Gripper Power
 		EndEffectorWriteFlag = 1;
 		EndEffectorWrite();
+
+		HAL_Delay(100);
 
 		state = 1;
 		scheduler = 1;				//Go Pick
