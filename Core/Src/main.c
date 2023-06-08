@@ -59,7 +59,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 // scheduler //
-int scheduler = 0;
+int scheduler = 5;
 int HoleSequence = 0 ;
 int TaskType = 1;
 
@@ -121,7 +121,7 @@ float errorvelocity = 0;
 float setacc = 0;
 
 float Kp_p = 50;
-float Ki_p = 0.5;
+float Ki_p = 0.8;
 float Kd_p = 0.02;
 
 //float Kp_v = 0.5;
@@ -180,10 +180,8 @@ uint8_t PlaceData[2] = {0x10, 0x69};
 int EndEffectorState = 0 ;
 
 // Proximity //
-int Proximity = 0;
-int PC1 = 0;
-int PC2 = 0;
-int PC3 = 0;
+int Proximity = 3;
+int Emercount = 0;
 
 //Modbus Protocal//
 ModbusHandleTypedef hmodbus;
@@ -311,9 +309,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  PC1 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1);
-	  PC2 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_2);
-	  PC3 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_3);
 
 	  VelocityApprox();
 	  AccelerationApprox();
@@ -395,7 +390,7 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 4 && position <= qf + 4) //&& registerFrame[64].U16 == 0
+		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0) //&& registerFrame[64].U16 == 0
 		  {
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
@@ -451,10 +446,23 @@ int main(void)
 
 		  break;
 
-	  //Emergency
+	  //Homing
 	  case 5:
 		  Homing();
 		  break;
+
+	  //Emergency
+	  case 6:
+		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1)
+		  {
+			  EndEffectorState = 8;		//Quit Emergency
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+			  Proximity = 3;
+			  scheduler = 5;
+		  }
 	  }
   }
   /* USER CODE END 3 */
@@ -935,6 +943,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PB5 PB6 */
   GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -948,6 +962,9 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -956,33 +973,49 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == GPIO_PIN_2)
 	{
 		scheduler = 5;
-		Proximity = 1;
+		Proximity = 2;
 	}
 	else if(GPIO_Pin == GPIO_PIN_3)
 	{
 		scheduler = 5;
-		Proximity = 2;
+		Proximity = 3;
+	}
+	else if(GPIO_Pin == GPIO_PIN_15 && Emercount == 0){
+		EndEffectorState = 7;			//Emergency
+		EndEffectorWriteFlag = 1;
+		EndEffectorWrite();
+		Emercount += 1;
+		scheduler = 6;
 	}
 }
 
 void Homing()
 {
-	if (Proximity == 1)
+	registerFrame[1].U16 = 4;
+	registerFrame[64].U16 = 1;
+	registerFrame[16].U16 = 4;
+	if (Proximity == 2)
 	{
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,20000);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
-	else if (Proximity == 2)
+	else if (Proximity == 3)
 	{
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,20000);
 	}
 
 	//Proximity Home
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1) == 1)
+	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1) == 0)
 	{
 		Proximity = 0;
+		Emercount = 0;
+		registerFrame[1].U16 = 0;
+		registerFrame[64].U16 = 0;
+		registerFrame[16].U16 = 0;
+
+		HAL_Delay(15);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		JoySpeed = 0;
@@ -1067,7 +1100,11 @@ void EndEffectorWrite()
 				HoleSequence += 1;
 				if (HoleSequence == 9)
 				{
-					scheduler = 0;
+					Proximity = 3;
+					HoleSequence = 0;
+					TaskType = 1;
+					registerFrame[1].U16 = 0;
+					scheduler = 5;
 				}
 				else
 				{
@@ -1328,10 +1365,7 @@ void JoystickLocationState()
 	{
 		registerFrame[1].U16 = 0;
 		registerFrame[16].U16 = 2;	//Y Moving Status: Jog Place
-//		EndEffectorState = 1;		//TestModeOn
 		registerFrame[2].U16 = 1;	//Laser On
-//		EndEffectorWriteFlag = 1;
-//		EndEffectorWrite();
 		state = 3;					//Go Place state
 	}
 	if(registerFrame[1].U16 == 8)	//Run Tray Mode
