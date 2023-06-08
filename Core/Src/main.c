@@ -189,6 +189,11 @@ u16u8_t registerFrame[70];
 
 char TxBuffer[80] = "";
 
+//Go Point
+int16_t GoalX = 0;
+int16_t last_GoalX = 0;
+int PointModeflag = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -324,6 +329,11 @@ int main(void)
 		  position = __HAL_TIM_GET_COUNTER(&htim3);
 		  JoystickControl(); //Read Pin form JoyStick
 		  JoystickLocationState();
+
+		  if(registerFrame[1].U16 == 16) //Run Point Mode
+		  {
+			  scheduler = 7;
+		  }
 		  break;
 
 	  //Go Pick
@@ -364,13 +374,6 @@ int main(void)
 			  AccelerationApprox();
 		  }
 
-//		  static uint32_t timestamp1 = 0;
-//		  if(HAL_GetTick() > timestamp1)
-//		  {
-//			  timestamp1 = HAL_GetTick() + 0.5;
-//			  TrajectoryGenerator();
-//		  }
-
 		  //PWM & Motor drive & PID
 		  static uint32_t timestamp2 = 0;
 		  if (HAL_GetTick()>= timestamp2)
@@ -390,15 +393,26 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0) //&& registerFrame[64].U16 == 0
+		  if(position >= qf - 4 && position <= qf + 4) //&& registerFrame[64].U16 == 0
 		  {
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 			  Trajectstate = 3;
-			  // End Effector
-			  EndEffectorWriteFlag = 1;
+
 			  HAL_TIM_Base_Stop_IT(&htim9); //Stop IT Timer9
-			  scheduler = 4;
+
+			  if(PointModeflag == 1)
+			  {
+				  PointModeflag = 0;
+				  scheduler = 0;
+			  }
+			  else
+			  {
+				  // End Effector
+				  EndEffectorWriteFlag = 1;
+				  scheduler = 4;
+			  }
+
 		  }
 
 		  // Reset Button
@@ -457,12 +471,43 @@ int main(void)
 		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1)
 		  {
+			  Emercount = 0;
 			  EndEffectorState = 8;		//Quit Emergency
 			  EndEffectorWriteFlag = 1;
 			  EndEffectorWrite();
 			  Proximity = 3;
 			  scheduler = 5;
 		  }
+
+	  //Go Point
+	  case 7:
+		  registerFrame[1].U16 = 0;
+		  registerFrame[16].U16 = 32;
+
+		  //X Axis
+		  GoalX = registerFrame[48].U16;  	// Use int16 to store -integer
+		  registerFrame[65].U16 = GoalX;  	// x-axis Target Position
+		  registerFrame[66].U16 = 3000;   	// Max Speed
+		  registerFrame[67].U16 = 2;        // 500 ms
+		  if(registerFrame[65].U16 != last_GoalX){
+			  registerFrame[64].U16 = 2;  	// RUN
+		  }
+		  last_GoalX = registerFrame[65].U16; // press RUN in Base System
+
+		  //Y Axis
+		  if(registerFrame[49].U16 >= 30000)
+		  {
+			  qf = (registerFrame[49].U16-65536)/0.45; //pulse
+		  }
+		  else
+		  {
+			  qf = (registerFrame[49].U16)/0.45; //Pick Tray X Position 1 //pulse
+		  }
+		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
+		  PointModeflag = 1;
+		  scheduler = 3;
+		  break;
+
 	  }
   }
   /* USER CODE END 3 */
@@ -973,19 +1018,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == GPIO_PIN_2)
 	{
 		scheduler = 5;
-		Proximity = 2;
+		Proximity = 3;
 	}
 	else if(GPIO_Pin == GPIO_PIN_3)
 	{
 		scheduler = 5;
-		Proximity = 3;
+		Proximity = 2;
 	}
-	else if(GPIO_Pin == GPIO_PIN_15 && Emercount == 0){
-		EndEffectorState = 7;			//Emergency
-		EndEffectorWriteFlag = 1;
-		EndEffectorWrite();
-		Emercount += 1;
-		scheduler = 6;
+	if(GPIO_Pin == GPIO_PIN_15) //Push Emergency
+	{
+		if(Emercount == 0)
+		{
+			EndEffectorState = 7;			//Emergency
+			EndEffectorWriteFlag = 1;
+			EndEffectorWrite();
+			Emercount += 1;
+			scheduler = 6;
+		}
 	}
 }
 
@@ -994,16 +1043,16 @@ void Homing()
 	registerFrame[1].U16 = 4;
 	registerFrame[64].U16 = 1;
 	registerFrame[16].U16 = 4;
-	if (Proximity == 2)
-	{
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,20000);
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-	}
-
-	else if (Proximity == 3)
+	if (Proximity == 3)
 	{
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,20000);
+	}
+
+	else if (Proximity == 2)
+	{
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,20000);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
 	//Proximity Home
@@ -1015,7 +1064,7 @@ void Homing()
 		registerFrame[64].U16 = 0;
 		registerFrame[16].U16 = 0;
 
-		HAL_Delay(15);
+		HAL_Delay(10);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		JoySpeed = 0;
@@ -1100,7 +1149,6 @@ void EndEffectorWrite()
 				HoleSequence += 1;
 				if (HoleSequence == 9)
 				{
-					Proximity = 3;
 					HoleSequence = 0;
 					TaskType = 1;
 					registerFrame[1].U16 = 0;
@@ -1689,7 +1737,9 @@ void TrajectoryGenerator()
 		setposition = position;
 		break;
 	}
+
 }
+
 /* USER CODE END 4 */
 
 /**
