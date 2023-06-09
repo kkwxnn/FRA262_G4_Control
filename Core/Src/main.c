@@ -120,8 +120,8 @@ float errorvelocity = 0;
 
 float setacc = 0;
 
-float Kp_p = 50;
-float Ki_p = 0.8;
+float Kp_p = 155;
+float Ki_p = 1.5;
 float Kd_p = 0.02;
 
 //float Kp_v = 0.5;
@@ -301,7 +301,7 @@ int main(void)
 	  static uint32_t uart_time = 0;
 	  if(heartbeat < HAL_GetTick())
 	  {
-		  heartbeat = HAL_GetTick()+100;
+		  heartbeat = HAL_GetTick()+200;
 		  registerFrame[0].U16 = 22881;
 	  }
 
@@ -393,17 +393,16 @@ int main(void)
 		  }
 
 		  // Check Final Position
-		  if(position >= qf - 4 && position <= qf + 4) //&& registerFrame[64].U16 == 0
+		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0) //&& registerFrame[64].U16 == 0
 		  {
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			  Trajectstate = 3;
 
 			  HAL_TIM_Base_Stop_IT(&htim9); //Stop IT Timer9
 
 			  if(PointModeflag == 1)
 			  {
-				  PointModeflag = 0;
+				  registerFrame[16].U16 = 0;
 				  scheduler = 0;
 			  }
 			  else
@@ -493,8 +492,10 @@ int main(void)
 			  registerFrame[64].U16 = 2;  	// RUN
 		  }
 		  last_GoalX = registerFrame[65].U16; // press RUN in Base System
+//		  registerFrame[64].U16 = 2;  	// RUN
 
 		  //Y Axis
+		  Trajectstate = 0;
 		  if(registerFrame[49].U16 >= 30000)
 		  {
 			  qf = (registerFrame[49].U16-65536)/0.45; //pulse
@@ -991,7 +992,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : PB15 */
   GPIO_InitStruct.Pin = GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB5 PB6 */
@@ -1032,7 +1033,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			EndEffectorState = 7;			//Emergency
 			EndEffectorWriteFlag = 1;
 			EndEffectorWrite();
-			Emercount += 1;
+			Emercount = 1;
 			scheduler = 6;
 		}
 	}
@@ -1046,12 +1047,12 @@ void Homing()
 	if (Proximity == 3)
 	{
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,20000);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,15000);
 	}
 
 	else if (Proximity == 2)
 	{
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,20000);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,15000);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
@@ -1648,8 +1649,8 @@ void TrajectoryGenerator()
 	case 0: //initial Condition & Case Check
 			qi = position;
 			qdi = 0;
-			qd_max = 22222.22;  //1000 pulse/s
-			qdd_max = 66666.67; //3000 pulse/s^2
+			qd_max = 22222;  //1000 pulse/s
+			qdd_max = 55555; //3000 pulse/s^2 /0.045
 
 		  if(qf > qi)
 		  {
@@ -1702,6 +1703,9 @@ void TrajectoryGenerator()
 			  setposition = qi_1 + qdi_1*(time-initime-t_half)+0.5*setacc*(time-initime-t_half)*(time-initime-t_half);
 			  time += 0.001;
 		  }
+		  else if(time > (2*t_half) + initime){
+			  setposition = qf;
+		  }
 		break;
 
 	case 2:
@@ -1732,9 +1736,12 @@ void TrajectoryGenerator()
 			 setposition = qi_2 + qdi_2*(time-initime-tacc-tconst)+0.5*setacc*(time-initime-tacc-tconst)*(time-initime-tacc-tconst);
 			 time += 0.001;
 		 }
+		 else if(time > tacc+tconst+tdec+initime){
+			 setposition = qf;
+		 }
 		 break;
 	case 3: // wait state
-		setposition = position;
+//		setposition = position;
 		break;
 	}
 
