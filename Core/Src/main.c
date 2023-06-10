@@ -1378,11 +1378,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 3000)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,10000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,9000);
 		}
 		else if(XYSwitch[1] < 1000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,10000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,9000);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -1512,9 +1512,28 @@ void JoystickLocationState()
 			PickTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*40)+PickTray.L1[0];
 			PickTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*40)+PickTray.L1[1];
 
+//			if(PickTray.L1[0] < 0)
+//			{
+//				PickTray.origin_x = PickTray.L1[0] + 65536;
+//			}
+//			else if(PickTray.L1[0] >= 0)
+//			{
+//				PickTray.origin_x = PickTray.L1[0];
+//			}
+//
+//			if(PickTray.L1[1] < 0)
+//			{
+//				PickTray.origin_y = PickTray.L1[1] + 65536;
+//			}
+//			else if(PickTray.L1[1] >= 0)
+//			{
+//				PickTray.origin_y = PickTray.L1[1];
+//			}
+
 			PickTray.origin_x = PickTray.L1[0];
 			PickTray.origin_y = PickTray.L1[1];
-			PickTray.orientation = angle;
+
+			PickTray.orientation = angle*(180/3.14159265358979323846264338328)*100;
 
 			registerFrame[35].U16 = PickTray.origin_x * 10;
 			registerFrame[36].U16 = PickTray.origin_y * 10;
@@ -1605,9 +1624,27 @@ void JoystickLocationState()
 			PlaceTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*40)+PlaceTray.L1[0];
 			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*40)+PlaceTray.L1[1];
 
+//			if(PlaceTray.L1[0] < 0)
+//			{
+//				PlaceTray.origin_x = PlaceTray.L1[0] + 65536;
+//			}
+//			else if(PlaceTray.L1[0] >= 0)
+//			{
+//				PlaceTray.origin_x = PlaceTray.L1[0];
+//			}
+//
+//			if(PlaceTray.L1[1] < 0)
+//			{
+//				PlaceTray.origin_y = PlaceTray.L1[1] + 65536;
+//			}
+//			else if(PlaceTray.L1[1] >= 0)
+//			{
+//				PlaceTray.origin_y = PlaceTray.L1[1];
+//			}
 			PlaceTray.origin_x = PlaceTray.L1[0];
 			PlaceTray.origin_y = PlaceTray.L1[1];
-			PlaceTray.orientation = angle;
+
+			PlaceTray.orientation = angle*(180/3.14159265358979323846264338328)*100;
 
 			registerFrame[35].U16 = PlaceTray.origin_x * 10;
 			registerFrame[36].U16 = PlaceTray.origin_y * 10;
