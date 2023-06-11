@@ -311,7 +311,7 @@ int main(void)
 
 	  if (huart1.gState == HAL_UART_STATE_READY && (HAL_GetTick() >= uart_time))
 	  {
-		  sprintf(TxBuffer,"%d %.2f %.2f\r\n",position, setposition, setvelocity);
+		  sprintf(TxBuffer,"%d %.2f %.2f %.2f\r\n",position, setposition, setvelocity, Accel);
 		  HAL_UART_Transmit_IT(&huart1, (uint8_t *)TxBuffer, strlen(TxBuffer));
 		  uart_time += 20;
 	  }
@@ -402,10 +402,10 @@ int main(void)
 			  }
 		  }
 
-		  if(position > Overshootposition){
-			  Overshootposition = position;
-			  PercentOS = ((Overshootposition-qf)/(qf-qi))*100;
-		  }
+//		  if(position > Overshootposition){
+//			  Overshootposition = position;
+//			  PercentOS = ((Overshootposition-qf)/(qf-qi))*100;
+//		  }
 		  // Check Final Position
 		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0) //&& registerFrame[64].U16 == 0
 		  {
@@ -760,18 +760,18 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = QEI_PERIOD-1;
+  htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC1Filter = 15;
+  sConfig.IC1Filter = 0;
   sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC2Filter = 15;
+  sConfig.IC2Filter = 0;
   if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -977,41 +977,41 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Motor_Drive_L_EN_Pin|Motor_Drive_R_EN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  /*Configure GPIO pin : Proximity_1_Pin */
+  GPIO_InitStruct.Pin = Proximity_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(Proximity_1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC2 PC3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  /*Configure GPIO pins : Proximity_2_Pin Proximity_3_Pin */
+  GPIO_InitStruct.Pin = Proximity_2_Pin|Proximity_3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA5 PA10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_10;
+  /*Configure GPIO pins : Joystick_Reset_Pin Joystick_Fine_Pin */
+  GPIO_InitStruct.Pin = Joystick_Reset_Pin|Joystick_Fine_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB10 PB4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_4;
+  /*Configure GPIO pins : Motor_Drive_L_EN_Pin Motor_Drive_R_EN_Pin */
+  GPIO_InitStruct.Pin = Motor_Drive_L_EN_Pin|Motor_Drive_R_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  /*Configure GPIO pin : Emergency_Switch_Pin */
+  GPIO_InitStruct.Pin = Emergency_Switch_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(Emergency_Switch_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB5 PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6;
+  /*Configure GPIO pins : Joystick_Rough_Pin Joystick_Get_Position_Pin */
+  GPIO_InitStruct.Pin = Joystick_Rough_Pin|Joystick_Get_Position_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -1214,7 +1214,7 @@ void VelocityApprox()
 void AccelerationApprox()
 {
 	static float LastVelo = 0;
-	Accel = (velocity - LastVelo);	//pulse/s^2
+	Accel = (velocity - LastVelo)/0.001;	//pulse/s^2
 	LastVelo = velocity;
 
 }
@@ -1478,62 +1478,40 @@ void JoystickLocationState()
 			PickTray.L2[1] = position*0.045; //Pick Tray Y Position 2 //mm
 			GetPositionButton.flag = 0;
 
-			DeltaX = PickTray.L2[0]-PickTray.L1[0];
-			DeltaY = PickTray.L2[1]-PickTray.L1[1];
-			angle = atan2(DeltaY, DeltaX);
+			cos_Theta = (PickTray.L2[0]-PickTray.L1[0])/sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1])));
+			sin_Theta = (PickTray.L2[1]-PickTray.L1[1])/sqrtf(((PickTray.L2[0]-PickTray.L1[0])*(PickTray.L2[0]-PickTray.L1[0]))+((PickTray.L2[1]-PickTray.L1[1])*(PickTray.L2[1]-PickTray.L1[1])));
+			//sin_Theta = sin(angle);
 
-			cos_Theta = cos(angle);
-			sin_Theta = sin(angle);
+			PickTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10)+PickTray.L1[0];
+			PickTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10)+PickTray.L1[1];
 
-			PickTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*10)+PickTray.L1[0];
-			PickTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*10)+PickTray.L1[1];
+			PickTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*-10)+PickTray.L1[0];
+			PickTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*-10)+PickTray.L1[1];
 
-			PickTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*10)+PickTray.L1[0];
-			PickTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*10)+PickTray.L1[1];
+			PickTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*-10)+PickTray.L1[0];
+			PickTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*-10)+PickTray.L1[1];
 
-			PickTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*10)+PickTray.L1[0];
-			PickTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*10)+PickTray.L1[1];
+			PickTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*-25)+PickTray.L1[0];
+			PickTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*-25)+PickTray.L1[1];
 
-			PickTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*25)+PickTray.L1[0];
-			PickTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*25)+PickTray.L1[1];
+			PickTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*-25)+PickTray.L1[0];
+			PickTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*-25)+PickTray.L1[1];
 
-			PickTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*25)+PickTray.L1[0];
-			PickTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*25)+PickTray.L1[1];
+			PickTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*-25)+PickTray.L1[0];
+			PickTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*-25)+PickTray.L1[1];
 
-			PickTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*25)+PickTray.L1[0];
-			PickTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*25)+PickTray.L1[1];
+			PickTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*-40)+PickTray.L1[0];
+			PickTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*-40)+PickTray.L1[1];
 
-			PickTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*40)+PickTray.L1[0];
-			PickTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*40)+PickTray.L1[1];
+			PickTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*-40)+PickTray.L1[0];
+			PickTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*-40)+PickTray.L1[1];
 
-			PickTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*40)+PickTray.L1[0];
-			PickTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*40)+PickTray.L1[1];
+			PickTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40)+PickTray.L1[0];
+			PickTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40)+PickTray.L1[1];
 
-			PickTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*40)+PickTray.L1[0];
-			PickTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*40)+PickTray.L1[1];
-
-//			if(PickTray.L1[0] < 0)
-//			{
-//				PickTray.origin_x = PickTray.L1[0] + 65536;
-//			}
-//			else if(PickTray.L1[0] >= 0)
-//			{
-//				PickTray.origin_x = PickTray.L1[0];
-//			}
-//
-//			if(PickTray.L1[1] < 0)
-//			{
-//				PickTray.origin_y = PickTray.L1[1] + 65536;
-//			}
-//			else if(PickTray.L1[1] >= 0)
-//			{
-//				PickTray.origin_y = PickTray.L1[1];
-//			}
-
-			PickTray.origin_x = PickTray.L1[0];
-			PickTray.origin_y = PickTray.L1[1];
-
-			PickTray.orientation = angle*(180/3.14159265358979323846264338328)*100;
+			PickTray.origin_x = PickTray.L1[0]+(50*sin_Theta);
+			PickTray.origin_y = PickTray.L1[1]-(50*cos_Theta);
+			PickTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
 			registerFrame[35].U16 = PickTray.origin_x * 10;
 			registerFrame[36].U16 = PickTray.origin_y * 10;
@@ -1590,61 +1568,39 @@ void JoystickLocationState()
 			PlaceTray.L2[1] = position*0.045; //Place Tray Y Position 2 //mm
 			GetPositionButton.flag = 0;
 
-			DeltaX = PlaceTray.L2[0]-PlaceTray.L1[0];
-			DeltaY = PlaceTray.L2[1]-PlaceTray.L1[1];
-			angle = atan2(DeltaY, DeltaX);
+			cos_Theta = (PlaceTray.L2[0]-PlaceTray.L1[0])/sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1])));
+			sin_Theta = (PlaceTray.L2[1]-PlaceTray.L1[1])/sqrtf(((PlaceTray.L2[0]-PlaceTray.L1[0])*(PlaceTray.L2[0]-PlaceTray.L1[0]))+((PlaceTray.L2[1]-PlaceTray.L1[1])*(PlaceTray.L2[1]-PlaceTray.L1[1])));
 
-			cos_Theta = cos(angle);
-			sin_Theta = sin(angle);
+			PlaceTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*-10)+PlaceTray.L1[0];
+			PlaceTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*-10)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[0] = (cos_Theta*10)+(-sin_Theta*10)+PlaceTray.L1[0];
-			PlaceTray.hole_y[0] = (sin_Theta*10)+(cos_Theta*10)+PlaceTray.L1[1];
+			PlaceTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*-10)+PlaceTray.L1[0];
+			PlaceTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*-10)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[1] = (cos_Theta*30)+(-sin_Theta*10)+PlaceTray.L1[0];
-			PlaceTray.hole_y[1] = (sin_Theta*30)+(cos_Theta*10)+PlaceTray.L1[1];
+			PlaceTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*-10)+PlaceTray.L1[0];
+			PlaceTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*-10)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[2] = (cos_Theta*50)+(-sin_Theta*10)+PlaceTray.L1[0];
-			PlaceTray.hole_y[2] = (sin_Theta*50)+(cos_Theta*10)+PlaceTray.L1[1];
+			PlaceTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*-25)+PlaceTray.L1[0];
+			PlaceTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*-25)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[3] = (cos_Theta*10)+(-sin_Theta*25)+PlaceTray.L1[0];
-			PlaceTray.hole_y[3] = (sin_Theta*10)+(cos_Theta*25)+PlaceTray.L1[1];
+			PlaceTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*-25)+PlaceTray.L1[0];
+			PlaceTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*-25)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[4] = (cos_Theta*30)+(-sin_Theta*25)+PlaceTray.L1[0];
-			PlaceTray.hole_y[4] = (sin_Theta*30)+(cos_Theta*25)+PlaceTray.L1[1];
+			PlaceTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*-25)+PlaceTray.L1[0];
+			PlaceTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*-25)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[5] = (cos_Theta*50)+(-sin_Theta*25)+PlaceTray.L1[0];
-			PlaceTray.hole_y[5] = (sin_Theta*50)+(cos_Theta*25)+PlaceTray.L1[1];
+			PlaceTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*-40)+PlaceTray.L1[0];
+			PlaceTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*-40)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[6] = (cos_Theta*10)+(-sin_Theta*40)+PlaceTray.L1[0];
-			PlaceTray.hole_y[6] = (sin_Theta*10)+(cos_Theta*40)+PlaceTray.L1[1];
+			PlaceTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*-40)+PlaceTray.L1[0];
+			PlaceTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*-40)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[7] = (cos_Theta*30)+(-sin_Theta*40)+PlaceTray.L1[0];
-			PlaceTray.hole_y[7] = (sin_Theta*30)+(cos_Theta*40)+PlaceTray.L1[1];
+			PlaceTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40)+PlaceTray.L1[0];
+			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40)+PlaceTray.L1[1];
 
-			PlaceTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*40)+PlaceTray.L1[0];
-			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*40)+PlaceTray.L1[1];
-
-//			if(PlaceTray.L1[0] < 0)
-//			{
-//				PlaceTray.origin_x = PlaceTray.L1[0] + 65536;
-//			}
-//			else if(PlaceTray.L1[0] >= 0)
-//			{
-//				PlaceTray.origin_x = PlaceTray.L1[0];
-//			}
-//
-//			if(PlaceTray.L1[1] < 0)
-//			{
-//				PlaceTray.origin_y = PlaceTray.L1[1] + 65536;
-//			}
-//			else if(PlaceTray.L1[1] >= 0)
-//			{
-//				PlaceTray.origin_y = PlaceTray.L1[1];
-//			}
-			PlaceTray.origin_x = PlaceTray.L1[0];
-			PlaceTray.origin_y = PlaceTray.L1[1];
-
-			PlaceTray.orientation = angle*(180/3.14159265358979323846264338328)*100;
+			PlaceTray.origin_x = PlaceTray.L1[0]+(50*sin_Theta);
+			PlaceTray.origin_y = PlaceTray.L1[1]-(50*cos_Theta);
+			PlaceTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
 			registerFrame[35].U16 = PlaceTray.origin_x * 10;
 			registerFrame[36].U16 = PlaceTray.origin_y * 10;
@@ -1711,7 +1667,7 @@ void TrajectoryGenerator()
 			qi = position;
 			qdi = 0;
 			qd_max = 22222;  //1000 pulse/s
-			qdd_max = 55555; //3000 pulse/s^2 /0.045
+			qdd_max = 55555; //2000 pulse/s^2 /0.045
 
 		  if(qf > qi)
 		  {
