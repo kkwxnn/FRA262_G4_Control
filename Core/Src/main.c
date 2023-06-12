@@ -137,9 +137,11 @@ typedef struct LocationStructure
 	float L2[2];
 	float hole_x[9];
 	float hole_y[9];
-	float origin_x;
-	float origin_y;
-	float orientation;
+	int16_t origin_x;
+	int16_t origin_y;
+	int16_t orientation;
+	int16_t hole_x_16;
+	int16_t hole_y_16;
 }Location;
 Location PickTray;
 Location PlaceTray;
@@ -162,6 +164,8 @@ Button ResetButton;
 Button FineButton;
 Button RoughButton;
 Button HomingButton;
+Button LaserUI;
+Button GripperUI;
 
 int XYSwitch[2];
 int JoySpeed = 0;
@@ -334,6 +338,68 @@ int main(void)
 		  JoystickControl(); //Read Pin form JoyStick
 		  JoystickLocationState();
 
+		  ////////////////////////////////////////////////////////////
+		  if(LaserUI.flag == 1)
+		  {
+			  EndEffectorState = 1;	//TestModeOn
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+		  }
+		  if(LaserUI.flag == 2)
+		  {
+			  EndEffectorState = 2;	//TestModeOff
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+		  }
+		  ///////////////////////////////////////////////////////////
+		  //write//
+		  if(GripperUI.flag == 1)
+		  {
+			  EndEffectorState = 3;	//Gripper Power On
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+		  }
+		  if(GripperUI.flag == 2)
+		  {
+			  EndEffectorState = 6;	//Gripper Power Off
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+		  }
+		  if(GripperUI.flag == 3)
+		  {
+			  EndEffectorState = 4;	//Gripper Pick
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+			  EndEffectorReadFlag = 1;
+		  }
+		  if(GripperUI.flag == 4)
+		  {
+			  EndEffectorState = 5;	//Gripper Place
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+			  EndEffectorReadFlag = 1;
+		  }
+		  static uint32_t Readbeat = 0;
+		  if(Readbeat < HAL_GetTick())
+		  {
+			  Readbeat = HAL_GetTick()+100 ;
+			  //Read//
+			  if(EndEffectorReadFlag == 1 && hi2c1.State == HAL_I2C_STATE_READY)
+			  {
+				  HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
+				  if(EndEffectorDataReadBack[0] == 0x07) // Picked
+				  {
+					  registerFrame[2].U16 = 2;
+					  EndEffectorReadFlag = 0;
+				  }
+				  else if(EndEffectorDataReadBack[0] == 0x04) // Placed
+				  {
+					  registerFrame[2].U16 = 2;
+					  EndEffectorReadFlag = 0;
+				  }
+			  }
+		  }
+
 		  if(registerFrame[1].U16 == 16) //Run Point Mode
 		  {
 			  scheduler = 7;
@@ -350,7 +416,16 @@ int main(void)
 	  case 1 :
 		  registerFrame[16].U16 = 8; //Y Moving Status: Go Pick
 		  qf = (PickTray.hole_y[HoleSequence])/0.045;
-		  registerFrame[65].U16 = PickTray.hole_x[HoleSequence]*10; //X-Axis Target Position Pick Tray
+		  PickTray.hole_x_16 = PickTray.hole_x[HoleSequence]*10;
+		  registerFrame[65].U16 = PickTray.hole_x_16;
+//		  if(PickTray.hole_x[HoleSequence] > 30000)
+//		  {
+//			  registerFrame[65].U16 = (PickTray.hole_x[HoleSequence]*10)+65536; //X-Axis Target Position Pick Tray (Negative)
+//		  }
+//		  else
+//		  {
+//			  registerFrame[65].U16 = PickTray.hole_x[HoleSequence]*10; //X-Axis Target Position Pick Tray (Positive)
+//		  }
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
@@ -363,7 +438,16 @@ int main(void)
 	  case 2 :
 		  registerFrame[16].U16 = 16; //Y Moving Status: Go Place
 		  qf = (PlaceTray.hole_y[HoleSequence])/0.045;
-		  registerFrame[65].U16 = PlaceTray.hole_x[HoleSequence]*10; //X-Axis Target Position Place Tray
+		  PlaceTray.hole_x_16 = PlaceTray.hole_x[HoleSequence]*10;
+		  registerFrame[65].U16 = PlaceTray.hole_x_16;
+//		  if(PlaceTray.hole_x[HoleSequence] > 30000)
+//		  {
+//			  registerFrame[65].U16 = (PlaceTray.hole_x[HoleSequence]*10)+65536; //X-Axis Target Position Place Tray (Negative)
+//		  }
+//		  else
+//		  {
+//			  registerFrame[65].U16 = PlaceTray.hole_x[HoleSequence]*10; //X-Axis Target Position Place Tray (Positive)
+//		  }
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
@@ -445,25 +529,11 @@ int main(void)
 			  {
 				  EndEffectorState = 4;			//Pick
 				  EndEffectorWrite();
-//				  TaskType = -1; 			// TestYesterday
-//				  HAL_Delay(2000);		    // TestYesterday
-//				  scheduler = 2; 			// TestYesterday
 			  }
 			  else if (TaskType == -1)
 			  {
 				  EndEffectorState = 5;			//Place
 				  EndEffectorWrite();
-//				  TaskType = 1; 			// TestYesterday
-//				  HoleSequence += 1; 		// TestYesterday
-//				  HAL_Delay(2000); 			// TestYesterday
-//				  if (HoleSequence == 9)
-//				  {
-//					  scheduler = 0; 		// TestYesterday
-//				  }
-//				  else
-//				  {
-//					  scheduler = 1; 		// TestYesterday
-//				  }
 			  }
 		  }
 		  if (ResetButton.flag == 1)
@@ -483,14 +553,19 @@ int main(void)
 	  case 6:
 		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-		  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1)
+		  static uint32_t Emerstamp = 0;
+		  if (HAL_GetTick()>= Emerstamp)
 		  {
-			  Emercount = 0;
-			  EndEffectorState = 8;		//Quit Emergency
-			  EndEffectorWriteFlag = 1;
-			  EndEffectorWrite();
-			  Proximity = 3;
-			  scheduler = 5;
+			  Emerstamp = HAL_GetTick() + 200;	//5 Hz
+			  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1)
+			  {
+				  Emercount = 0;
+				  EndEffectorState = 8;		//Quit Emergency
+				  EndEffectorWriteFlag = 1;
+				  EndEffectorWrite();
+				  Proximity = 3;
+				  scheduler = 5;
+			  }
 		  }
 
 	  //Go Point
@@ -1062,12 +1137,12 @@ void Homing()
 	if (Proximity == 3)
 	{
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,15000);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,10000);
 	}
 
 	else if (Proximity == 2)
 	{
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,15000);
+		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,10000);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 	}
 
@@ -1318,6 +1393,44 @@ void JoystickPinUpdate()
 		  HomingButton.flag = 0;
 	  }
 	  HomingButton.last = HomingButton.current;
+
+	  LaserUI.current = registerFrame[2].U16;
+	  if (LaserUI.last == 0 && LaserUI.current == 1)
+	  {
+		  LaserUI.flag = 1;	//Rising Edge
+	  }
+	  else if(LaserUI.last == 1 && LaserUI.current == 0)
+	  {
+		  LaserUI.flag = 2;	//Falling Edge
+	  }
+	  else
+	  {
+		  LaserUI.flag = 0;
+	  }
+	  LaserUI.last = LaserUI.current;
+
+	  GripperUI.current = registerFrame[2].U16;
+	  if (GripperUI.last == 0 && GripperUI.current == 2)
+	  {
+		  GripperUI.flag = 1; //Gripper On
+	  }
+	  else if(GripperUI.last == 2 && GripperUI.current == 0)
+	  {
+		  GripperUI.flag = 2; //Gripper Off
+	  }
+	  else if(GripperUI.last == 2 && GripperUI.current == 6)
+	  {
+		  GripperUI.flag = 3; //Gripper Pick
+	  }
+	  else if(GripperUI.last == 2 && GripperUI.current == 10)
+	  {
+		  GripperUI.flag = 4; //Gripper Place
+	  }
+	  else
+	  {
+		  GripperUI.flag = 0;
+	  }
+	  GripperUI.last = GripperUI.current;
 }
 
 void JoystickControl()
@@ -1378,11 +1491,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 3000)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,9000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,8000);
 		}
 		else if(XYSwitch[1] < 1000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,9000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,8000);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -1509,12 +1622,12 @@ void JoystickLocationState()
 			PickTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40)+PickTray.L1[0];
 			PickTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40)+PickTray.L1[1];
 
-			PickTray.origin_x = PickTray.L1[0]+(50*sin_Theta);
-			PickTray.origin_y = PickTray.L1[1]-(50*cos_Theta);
+			PickTray.origin_x = (PickTray.L1[0]+(50*sin_Theta))*10;
+			PickTray.origin_y = (PickTray.L1[1]-(50*cos_Theta))*10;
 			PickTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
-			registerFrame[35].U16 = PickTray.origin_x * 10;
-			registerFrame[36].U16 = PickTray.origin_y * 10;
+			registerFrame[35].U16 = PickTray.origin_x;
+			registerFrame[36].U16 = PickTray.origin_y;
 			registerFrame[37].U16 = PickTray.orientation * 100;
 
 			registerFrame[16].U16 = 0;
@@ -1598,12 +1711,12 @@ void JoystickLocationState()
 			PlaceTray.hole_x[8] = (cos_Theta*50)+(-sin_Theta*-40)+PlaceTray.L1[0];
 			PlaceTray.hole_y[8] = (sin_Theta*50)+(cos_Theta*-40)+PlaceTray.L1[1];
 
-			PlaceTray.origin_x = PlaceTray.L1[0]+(50*sin_Theta);
-			PlaceTray.origin_y = PlaceTray.L1[1]-(50*cos_Theta);
+			PlaceTray.origin_x = (PlaceTray.L1[0]+(50*sin_Theta))*10;
+			PlaceTray.origin_y = (PlaceTray.L1[1]-(50*cos_Theta))*10;
 			PlaceTray.orientation = acosf(cos_Theta)*(180/3.14159265358979323846264338328);
 
-			registerFrame[35].U16 = PlaceTray.origin_x * 10;
-			registerFrame[36].U16 = PlaceTray.origin_y * 10;
+			registerFrame[35].U16 = PlaceTray.origin_x;
+			registerFrame[36].U16 = PlaceTray.origin_y;
 			registerFrame[37].U16 = PlaceTray.orientation * 100;
 
 			registerFrame[16].U16 = 0;
