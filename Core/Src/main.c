@@ -115,7 +115,9 @@ float integral_v = 0;
 float derivative_v = 0;
 
 float velocity = 0;
+float velocity_mm = 0;
 float Accel = 0;
+float Accel_mm = 0;
 float setvelocity = 0;
 float sumsetvelocity = 0;
 float errorvelocity = 0;
@@ -126,8 +128,6 @@ float setacc = 0;
 float Kp_p = 155;
 float Ki_p = 1.5;
 float Kd_p = 0.02;
-
-
 
 // Joystick //
 int state = 1;
@@ -166,6 +166,7 @@ Button RoughButton;
 Button HomingButton;
 Button LaserUI;
 Button GripperUI;
+Button Emer;
 
 int XYSwitch[2];
 int JoySpeed = 0;
@@ -315,19 +316,28 @@ int main(void)
 
 	  if (huart1.gState == HAL_UART_STATE_READY && (HAL_GetTick() >= uart_time))
 	  {
-		  sprintf(TxBuffer,"%d %.2f %.2f %.2f\r\n",position, setposition, setvelocity, Accel);
+		  sprintf(TxBuffer,"%d %.2f %.2f %.2f\r\n",position, setposition, velocity_mm, Accel_mm);
 		  HAL_UART_Transmit_IT(&huart1, (uint8_t *)TxBuffer, strlen(TxBuffer));
 		  uart_time += 20;
 	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-	  VelocityApprox();
-	  AccelerationApprox();
 	  Routine(); //Sent Y Actual Position Velocity Acceleration to Base System
-
 	  JoystickPinUpdate(); //Check Pin Flag
+
+	  //Emergency
+	  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 0) //Push Emergency
+	  {
+		  if(Emercount == 0)
+		  {
+			  EndEffectorState = 7;	//Emergency
+			  EndEffectorWriteFlag = 1;
+			  EndEffectorWrite();
+			  Emercount = 1;
+			  scheduler = 6;
+		  }
+	  }
 
 	  switch(scheduler)
 	  {
@@ -418,14 +428,6 @@ int main(void)
 		  qf = (PickTray.hole_y[HoleSequence])/0.045;
 		  PickTray.hole_x_16 = PickTray.hole_x[HoleSequence]*10;
 		  registerFrame[65].U16 = PickTray.hole_x_16;
-//		  if(PickTray.hole_x[HoleSequence] > 30000)
-//		  {
-//			  registerFrame[65].U16 = (PickTray.hole_x[HoleSequence]*10)+65536; //X-Axis Target Position Pick Tray (Negative)
-//		  }
-//		  else
-//		  {
-//			  registerFrame[65].U16 = PickTray.hole_x[HoleSequence]*10; //X-Axis Target Position Pick Tray (Positive)
-//		  }
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
@@ -440,14 +442,6 @@ int main(void)
 		  qf = (PlaceTray.hole_y[HoleSequence])/0.045;
 		  PlaceTray.hole_x_16 = PlaceTray.hole_x[HoleSequence]*10;
 		  registerFrame[65].U16 = PlaceTray.hole_x_16;
-//		  if(PlaceTray.hole_x[HoleSequence] > 30000)
-//		  {
-//			  registerFrame[65].U16 = (PlaceTray.hole_x[HoleSequence]*10)+65536; //X-Axis Target Position Place Tray (Negative)
-//		  }
-//		  else
-//		  {
-//			  registerFrame[65].U16 = PlaceTray.hole_x[HoleSequence]*10; //X-Axis Target Position Place Tray (Positive)
-//		  }
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
@@ -486,10 +480,10 @@ int main(void)
 			  }
 		  }
 
-//		  if(position > Overshootposition){
-//			  Overshootposition = position;
-//			  PercentOS = ((Overshootposition-qf)/(qf-qi))*100;
-//		  }
+		  if(position > Overshootposition){
+			  Overshootposition = position;
+			  PercentOS = ((Overshootposition-qf)/(qf-qi))*100;
+		  }
 		  // Check Final Position
 		  if(position >= qf - 4 && position <= qf + 4 && registerFrame[64].U16 == 0) //&& registerFrame[64].U16 == 0
 		  {
@@ -510,7 +504,6 @@ int main(void)
 				  EndEffectorWriteFlag = 1;
 				  scheduler = 4;
 			  }
-
 		  }
 
 		  // Reset Button
@@ -553,20 +546,25 @@ int main(void)
 	  case 6:
 		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+		  duty = 0;
+
 		  static uint32_t Emerstamp = 0;
-		  if (HAL_GetTick()>= Emerstamp)
+		  if(Emerstamp < HAL_GetTick())
 		  {
-			  Emerstamp = HAL_GetTick() + 200;	//5 Hz
-			  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1)
+			  Emerstamp = HAL_GetTick()+200;
+			  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 1 && Emer.last == 1)
 			  {
+				  HAL_Delay(2000);
 				  Emercount = 0;
-				  EndEffectorState = 8;		//Quit Emergency
+				  EndEffectorState = 8;	//Quit Emergency
 				  EndEffectorWriteFlag = 1;
 				  EndEffectorWrite();
 				  Proximity = 3;
 				  scheduler = 5;
 			  }
+			  Emer.last = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15);
 		  }
+		  break;
 
 	  //Go Point
 	  case 7:
@@ -1098,9 +1096,6 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-
 }
 
 /* USER CODE BEGIN 4 */
@@ -1115,17 +1110,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
 		scheduler = 5;
 		Proximity = 2;
-	}
-	if(GPIO_Pin == GPIO_PIN_15) //Push Emergency
-	{
-		if(Emercount == 0)
-		{
-			EndEffectorState = 7;			//Emergency
-			EndEffectorWriteFlag = 1;
-			EndEffectorWrite();
-			Emercount = 1;
-			scheduler = 6;
-		}
 	}
 }
 
@@ -1155,7 +1139,7 @@ void Homing()
 		registerFrame[64].U16 = 0;
 		registerFrame[16].U16 = 0;
 
-		HAL_Delay(10);
+		HAL_Delay(35);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		JoySpeed = 0;
@@ -1284,6 +1268,7 @@ void VelocityApprox()
 	static int16_t lastposition = 0;
 	velocity = (position - lastposition)/0.001; //pulse/s
 	lastposition = position;
+	velocity_mm = velocity*0.045; //mm/s
 }
 
 void AccelerationApprox()
@@ -1291,7 +1276,7 @@ void AccelerationApprox()
 	static float LastVelo = 0;
 	Accel = (velocity - LastVelo)/0.001;	//pulse/s^2
 	LastVelo = velocity;
-
+	Accel_mm = Accel*0.045; //mm/s^2
 }
 
 void Routine()
@@ -1491,11 +1476,11 @@ void JoystickControl()
 		if(XYSwitch[1] > 3000)
 		{
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,8000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,7000);
 		}
 		else if(XYSwitch[1] < 1000)
 		{
-			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,8000);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,7000);
 			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 		}
 		else
@@ -1779,8 +1764,8 @@ void TrajectoryGenerator()
 	case 0: //initial Condition & Case Check
 			qi = position;
 			qdi = 0;
-			qd_max = 22222;  //1000 pulse/s
-			qdd_max = 55555; //2000 pulse/s^2 /0.045
+			qd_max = 22222.22;  //1000 pulse/s
+			qdd_max = 55555.55; //2000 pulse/s^2 /0.045
 
 		  if(qf > qi)
 		  {

@@ -86,7 +86,6 @@ void Error_Handler(void);
 #define Motor_Drive_L_EN_GPIO_Port GPIOB
 #define Emergency_Switch_Pin GPIO_PIN_15
 #define Emergency_Switch_GPIO_Port GPIOB
-#define Emergency_Switch_EXTI_IRQn EXTI15_10_IRQn
 #define PWM_CH1_Pin GPIO_PIN_8
 #define PWM_CH1_GPIO_Port GPIOA
 #define PWM_CH2_Pin GPIO_PIN_9
