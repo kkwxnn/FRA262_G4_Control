@@ -98,6 +98,7 @@ float tconst ;
 float tdec ;
 
 // PID //
+int PIDFrag = 0;
 int16_t position = 0;
 int16_t Overshootposition = 0;
 float PercentOS = 0;
@@ -125,7 +126,7 @@ float errorvelocity = 0;
 float setacc = 0;
 
 //Without mass
-float Kp_p = 155;
+float Kp_p = 100;
 float Ki_p = 1.5;
 float Kd_p = 0.02;
 
@@ -426,12 +427,14 @@ int main(void)
 	  case 1 :
 		  registerFrame[16].U16 = 8; //Y Moving Status: Go Pick
 		  qf = (PickTray.hole_y[HoleSequence])/0.045;
+		  qi = position;
 		  PickTray.hole_x_16 = PickTray.hole_x[HoleSequence]*10;
 		  registerFrame[65].U16 = PickTray.hole_x_16;
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
+		  duty = 0;
 		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 		  scheduler = 3;
 		  break;
@@ -440,12 +443,14 @@ int main(void)
 	  case 2 :
 		  registerFrame[16].U16 = 16; //Y Moving Status: Go Place
 		  qf = (PlaceTray.hole_y[HoleSequence])/0.045;
+		  qi = position;
 		  PlaceTray.hole_x_16 = PlaceTray.hole_x[HoleSequence]*10;
 		  registerFrame[65].U16 = PlaceTray.hole_x_16;
 		  registerFrame[66].U16 = 3000;
 		  registerFrame[67].U16 = 1;
 		  registerFrame[64].U16 = 2; //X Moving Status: Run
 		  Trajectstate = 0;
+		  duty = 0;
 		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 		  scheduler = 3;
 		  break;
@@ -463,22 +468,22 @@ int main(void)
 		  }
 
 		  //PWM & Motor drive & PID
-		  static uint32_t timestamp2 = 0;
-		  if (HAL_GetTick()>= timestamp2)
-		  {
-			  timestamp2 = HAL_GetTick() + 1;
-			  duty = PIDcal();
-			  if (duty >= 0)
-			  {
-				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
-				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
-			  }
-			  else if (duty < 0)
-			  {
-				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
-				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
-			  }
-		  }
+//		  static uint32_t timestamp2 = 0;
+//		  if (HAL_GetTick()>= timestamp2)
+//		  {
+//			  timestamp2 = HAL_GetTick() + 1;
+//			  duty = PIDcal();
+//			  if (duty >= 0)
+//			  {
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+//			  }
+//			  else if (duty < 0)
+//			  {
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+//				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
+//			  }
+//		  }
 
 		  if(position > Overshootposition){
 			  Overshootposition = position;
@@ -490,7 +495,7 @@ int main(void)
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
 			  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
 			  Overshootposition = 0;
-
+			  PIDFrag = 0;
 			  HAL_TIM_Base_Stop_IT(&htim9); //Stop IT Timer9
 
 			  if(PointModeflag == 1)
@@ -592,11 +597,12 @@ int main(void)
 		  {
 			  qf = (registerFrame[49].U16)/0.45; //Pick Tray X Position 1 //pulse
 		  }
+		  qi = position;
 		  HAL_TIM_Base_Start_IT(&htim9); //Start IT Timer9
 		  PointModeflag = 1;
+		  duty = 0;
 		  scheduler = 3;
 		  break;
-
 	  }
   }
   /* USER CODE END 3 */
@@ -1079,7 +1085,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : Emergency_Switch_Pin */
   GPIO_InitStruct.Pin = Emergency_Switch_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(Emergency_Switch_GPIO_Port, &GPIO_InitStruct);
 
@@ -1149,7 +1155,6 @@ void Homing()
 
 void EndEffectorWrite()
 {
-//	HAL_I2C_Master_Receive_IT(&hi2c1, 0x15 << 1, EndEffectorDataReadBack, 1);
 	switch(EndEffectorState)
 	{
 	case 0:
@@ -1266,17 +1271,32 @@ void EndEffectorWrite()
 void VelocityApprox()
 {
 	static int16_t lastposition = 0;
+	static float velocity_last = 0;
+	static float velocity_lowpass = 0;
+	static float C_V = 0.0196;
 	velocity = (position - lastposition)/0.001; //pulse/s
 	lastposition = position;
-	velocity_mm = velocity*0.045; //mm/s
+
+	velocity_lowpass = C_V*velocity + (1-C_V)*velocity_last;
+	velocity_last = velocity_lowpass;
+
+	velocity_mm = velocity_lowpass*0.045; //mm/s
+
 }
 
 void AccelerationApprox()
 {
 	static float LastVelo = 0;
-	Accel = (velocity - LastVelo)/0.001;	//pulse/s^2
-	LastVelo = velocity;
-	Accel_mm = Accel*0.045; //mm/s^2
+	static float Accel_last = 0;
+	static float Accel_lowpass = 0;
+	static float C_A = 0.0177;
+	Accel = (velocity_mm - LastVelo)/0.001;	//pulse/s^2
+	LastVelo = velocity_mm;
+
+	Accel_lowpass = C_A*Accel + (1-C_A)*Accel_last;
+	Accel_last = Accel_lowpass;
+
+	Accel_mm = Accel_lowpass; //mm/s^2
 }
 
 void Routine()
@@ -1571,7 +1591,7 @@ void JoystickLocationState()
 			}
 			else
 			{
-				PickTray.L2[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm
+				PickTray.L2[0] = (registerFrame[68].U16)/10; //Pick Tray X Position 1 //mm0
 			}
 			PickTray.L2[1] = position*0.045; //Pick Tray Y Position 2 //mm
 			GetPositionButton.flag = 0;
@@ -1745,6 +1765,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(scheduler == 3)
 		{
 			TrajectoryGenerator();
+			if(PIDFrag == 1){
+				duty = PIDcal();
+				if (duty >= 0)
+				{
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,0);
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+				}
+				else if (duty < 0)
+				{
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,0);
+				  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,-1*duty);
+				}
+			}
 		}
 	}
 //	if(htim == &htim4){
@@ -1762,10 +1795,11 @@ void TrajectoryGenerator()
 	switch(Trajectstate)
 	{
 	case 0: //initial Condition & Case Check
-			qi = position;
+//			qi = position;
 			qdi = 0;
 			qd_max = 22222.22;  //1000 pulse/s
-			qdd_max = 55555.55; //2000 pulse/s^2 /0.045
+			qdd_max = 22222.22; //1000 pulse/s^2 /0.045
+//			qdd_max = 11111.11; //500 pulse/s^2 /0.045 with mass
 
 		  if(qf > qi)
 		  {
@@ -1801,6 +1835,7 @@ void TrajectoryGenerator()
 		  break;
 
 	case 1:
+		PIDFrag = 1;
 		  if(time <= t_half + initime)
 		  {
 			  setacc = qdd_max;
@@ -1824,6 +1859,7 @@ void TrajectoryGenerator()
 		break;
 
 	case 2:
+		PIDFrag = 1;
 		 if(time <= tacc + initime)
 		 {
 			 setacc = qdd_max;
